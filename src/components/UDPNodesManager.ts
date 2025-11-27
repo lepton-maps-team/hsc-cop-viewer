@@ -1715,4 +1715,24 @@ export class UDPNodesManager {
   hasDataPoints(): boolean {
     return this.udpDataPoints.size > 0;
   }
+
+  /**
+   * Get all network members (nodes with opcode 102 data)
+   */
+  getNetworkMembers(): UDPDataPoint[] {
+    return Array.from(this.udpDataPoints.values()).filter(
+      (point) =>
+        point.callsign !== undefined ||
+        point.internalData !== undefined ||
+        point.regionalData !== undefined ||
+        point.battleGroupData !== undefined
+    );
+  }
+
+  /**
+   * Get all UDP data points
+   */
+  getAllNodes(): UDPDataPoint[] {
+    return Array.from(this.udpDataPoints.values());
+  }
 }

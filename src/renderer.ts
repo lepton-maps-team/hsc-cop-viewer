@@ -1,7 +1,6 @@
 import "./index.css";
 import { MapManager } from "./map";
 import { Aircraft, AircraftType } from "./types";
-import { LocationDisplay } from "./components/LocationDisplay";
 import { ThreatDialog } from "./components/ThreatDialog";
 import { RightSidebar } from "./components/RightSidebar";
 import { BottomBar } from "./components/BottomBar";
@@ -9,6 +8,7 @@ import { DebugInfo } from "./components/DebugInfo";
 import { AdaptiveRadarCircles } from "./components/AdaptiveRadarCircles";
 import { AircraftRenderer } from "./components/AircraftRenderer";
 import { UDPNodesManager, UDPDataPoint } from "./components/UDPNodesManager";
+import { NetworkMembersTable } from "./components/NetworkMembersTable";
 
 class TacticalDisplayClient {
   private aircraft: Map<string, Aircraft> = new Map();
@@ -23,13 +23,13 @@ class TacticalDisplayClient {
   private udpNodesManager: UDPNodesManager;
 
   // Components
-  private locationDisplay: LocationDisplay;
   private threatDialog: ThreatDialog;
   private rightSidebar: RightSidebar;
   private bottomBar: BottomBar;
   private debugInfo: DebugInfo;
   private adaptiveRadarCircles: AdaptiveRadarCircles;
   private aircraftRenderer: AircraftRenderer;
+  private networkMembersTable: NetworkMembersTable;
   private simulationSystem: {
     isRunning: boolean;
     startTime: number;
@@ -69,7 +69,6 @@ class TacticalDisplayClient {
 
   constructor() {
     this.udpNodesManager = new UDPNodesManager(this.mapManager);
-    this.locationDisplay = new LocationDisplay(this.mapManager);
     this.threatDialog = new ThreatDialog(
       (aircraft) => this.lockThreat(aircraft),
       (aircraft) => this.executeThreat(aircraft)
@@ -81,6 +80,7 @@ class TacticalDisplayClient {
     this.aircraftRenderer = new AircraftRenderer((aircraft) =>
       this.showAircraftDetails(aircraft)
     );
+    this.networkMembersTable = new NetworkMembersTable();
 
     this.initialize();
   }
@@ -97,7 +97,6 @@ class TacticalDisplayClient {
 
     // Listen for map center changes
     window.addEventListener("map-center-changed", () => {
-      this.locationDisplay.update();
       if (this.udpNodesManager.hasDataPoints() && this.mapManager) {
         this.udpNodesManager.updateUDPDots();
         this.udpNodesManager.updateConnectionLines();
@@ -117,6 +116,9 @@ class TacticalDisplayClient {
     if (typeof window !== "undefined" && (window as any).udp) {
       (window as any).udp.onDataFromMain((data: UDPDataPoint[]) => {
         this.udpNodesManager.handleUDPData(data);
+        // Update network members table
+        const networkMembers = this.udpNodesManager.getNetworkMembers();
+        this.networkMembersTable.update(networkMembers);
       });
     }
 
@@ -246,8 +248,8 @@ class TacticalDisplayClient {
         initialLat,
         initialLng
       );
-      this.locationDisplay.setMapManager(this.mapManager);
       this.udpNodesManager.setMapManager(this.mapManager);
+      this.networkMembersTable.setMapManager(this.mapManager);
 
       // Set callbacks for red node actions
       this.udpNodesManager.setRedNodeCallbacks(
@@ -266,9 +268,8 @@ class TacticalDisplayClient {
       // Initialize UDP nodes containers
       this.udpNodesManager.initializeContainers(visualizationArea);
 
-      // Update location display and UDP dots when map loads
+      // Update UDP dots when map loads
       this.mapManager.getMapboxMap()?.on("load", () => {
-        this.locationDisplay.update();
         this.udpNodesManager.updateUDPDots();
         this.udpNodesManager.updateConnectionLines();
       });
@@ -292,7 +293,6 @@ class TacticalDisplayClient {
 
       // Also update immediately if map is already loaded
       if (this.mapManager.getMapboxMap()?.loaded) {
-        this.locationDisplay.update();
         this.udpNodesManager.updateUDPDots();
         this.udpNodesManager.updateConnectionLines();
       }
@@ -301,7 +301,6 @@ class TacticalDisplayClient {
 
       // Re-setup event listeners for the reinitialized map
       this.mapManager.getMapboxMap()?.on("load", () => {
-        this.locationDisplay.update();
         this.udpNodesManager.updateUDPDots();
         this.udpNodesManager.updateConnectionLines();
       });
@@ -338,7 +337,6 @@ class TacticalDisplayClient {
 
       // Update immediately if map is already loaded
       if (this.mapManager.getMapboxMap()?.loaded) {
-        this.locationDisplay.update();
         this.udpNodesManager.updateUDPDots();
         this.udpNodesManager.updateConnectionLines();
       }
@@ -365,10 +363,11 @@ class TacticalDisplayClient {
       // No center aircraft available, skip rendering
       this.bottomBar.create(container);
       this.debugInfo.create(container, this.aircraft, this.nodeId);
-      // Update location display with map center
+      this.networkMembersTable.create(container);
 
-      this.locationDisplay.update();
-
+      // Update network members table with current data
+      const networkMembers = this.udpNodesManager.getNetworkMembers();
+      this.networkMembersTable.update(networkMembers);
       return;
     }
 
@@ -467,6 +466,10 @@ class TacticalDisplayClient {
 
     this.debugInfo.create(container, this.aircraft, this.nodeId);
 
+    // Update network members table with current data
+    const networkMembers = this.udpNodesManager.getNetworkMembers();
+    this.networkMembersTable.update(networkMembers);
+
     this.checkWarnings();
 
     if (this.threatDialog.isVisible()) {
@@ -487,9 +490,6 @@ class TacticalDisplayClient {
         this.threatDialog.update(nearestThreats);
       }
     }
-
-    this.locationDisplay.create();
-    this.locationDisplay.update();
   }
 
   private setViewMode(mode: "normal" | "self-only") {

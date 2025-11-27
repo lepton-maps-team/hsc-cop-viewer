@@ -177,3 +177,13 @@ body {
     filter: brightness(0);
   }
 }
+
+/* Emergency indicator blink animation */
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
