@@ -1,0 +1,61 @@
+{
+  "name": "cop",
+  "productName": "COP",
+  "version": "1.0.0",
+  "description": "Common Operational Picture Viewer - Electron App",
+  "main": ".vite/build/main.js",
+  "author": {
+    "name": "sahillepton",
+    "email": "sahil@leptonsoftware.com"
+  },
+  "license": "MIT",
+  "scripts": {
+    "start": "electron-forge start",
+    "dev": "electron-forge start",
+    "build": "electron-builder --win",
+    "dist": "electron-builder",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "lint": "eslint --ext .ts,.tsx ."
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1",
+    "mapbox-gl": "^3.1.2"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.9.0",
+    "@electron-forge/maker-deb": "^7.9.0",
+    "@electron-forge/maker-rpm": "^7.9.0",
+    "@electron-forge/maker-squirrel": "^7.9.0",
+    "@electron-forge/maker-zip": "^7.9.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.9.0",
+    "@electron-forge/plugin-fuses": "^7.9.0",
+    "@electron-forge/plugin-vite": "^7.9.0",
+    "@electron/fuses": "^1.8.0",
+    "@types/electron-squirrel-startup": "^1.0.2",
+    "@typescript-eslint/eslint-plugin": "^5.62.0",
+    "@typescript-eslint/parser": "^5.62.0",
+    "electron": "38.1.0",
+    "electron-builder": "^26.0.12",
+    "electron-packager": "^17.1.2",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.32.0",
+    "typescript": "~4.5.4",
+    "vite": "^5.4.20"
+  },
+  "build": {
+    "appId": "com.yourcompany.yourapp",
+    "productName": "Your App Name",
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}
