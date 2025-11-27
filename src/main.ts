@@ -1,6 +1,7 @@
 import { app, BrowserWindow, globalShortcut, ipcMain } from "electron";
 import dgram from "node:dgram";
 import path from "node:path";
+import fs from "node:fs";
 import started from "electron-squirrel-startup";
 
 if (started) {
@@ -12,6 +13,34 @@ let promptWindow: BrowserWindow | null = null;
 let udpSocket: dgram.Socket | null = null;
 let latestNodes: Array<any> = [];
 let udpConfig: { host: string; port: number } | null = null;
+
+// Logging utility
+function getLogFileName(): string {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}.txt`;
+}
+
+function getLogFilePath(): string {
+  const logDir = path.join(app.getPath("userData"), "logs");
+  if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+  }
+  return path.join(logDir, getLogFileName());
+}
+
+function writeLog(message: string): void {
+  try {
+    const logPath = getLogFilePath();
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] ${message}\n`;
+    fs.appendFileSync(logPath, logEntry, "utf8");
+  } catch (error) {
+    console.error("Failed to write log:", error);
+  }
+}
 
 // Resolution Values for Opcode 101
 const LATITUDE_RESOLUTION_101 = 0.000000083819;
@@ -46,6 +75,11 @@ const HEADING_RESOLUTION = 0.0054932;
 const GROUND_SPEED_RESOLUTION_104 = 0.0625;
 const RANGE_RESOLUTION = 0.048828125;
 
+// Resolution values for Opcode 122
+const LATITUDE_RESOLUTION_122 = 0.000000083819;
+const LONGITUDE_RESOLUTION_122 = 0.000000083819;
+const ALTITUDE_RESOLUTION_122 = 1.0;
+
 ipcMain.handle("udp-request-latest", async () => {
   return latestNodes;
 });
@@ -61,8 +95,15 @@ function setupUdpClient(host: string, port: number): Promise<void> {
       });
 
       udpSocket.on("message", (msg) => {
-        //   console.log("message:", msg);
+        const rawMsgStr = `raw message: ${JSON.stringify(Array.from(msg))}`;
+        console.log(rawMsgStr);
+        writeLog(rawMsgStr);
+
         const isAsciiBinary = msg.every((byte) => byte === 48 || byte === 49);
+        const isAsciiStr = `isAsciiBinary: ${isAsciiBinary}`;
+        console.log(isAsciiStr);
+        writeLog(isAsciiStr);
+
         const bin = isAsciiBinary
           ? msg.toString("utf8").trim()
           : Array.from(msg)
@@ -70,6 +111,14 @@ function setupUdpClient(host: string, port: number): Promise<void> {
               .join("");
         const readBits = (start: number, len: number) =>
           parseInt(bin.slice(start, start + len), 2);
+
+        const binStr = `bin: ${bin}`;
+        console.log(binStr);
+        writeLog(binStr);
+
+        const readBitsStr = `readBits: ${readBits(0, 8)}`;
+        console.log(readBitsStr);
+        writeLog(readBitsStr);
 
         const readI16 = (start: number) => {
           let v = readBits(start, 16);
@@ -316,6 +365,17 @@ function setupUdpClient(host: string, port: number): Promise<void> {
               sensorsOffset += 32; // 4 bytes = 32 bits
             }
 
+            // Read opcode102J - Circle ranges (6 bytes)
+            const circleRangesOffset = sensorsOffset;
+            const circleRanges = {
+              D1: readBits(circleRangesOffset, 8), // byte 0
+              D2: readBits(circleRangesOffset + 8, 8), // byte 1
+              D3: readBits(circleRangesOffset + 16, 8), // byte 2
+              D4: readBits(circleRangesOffset + 24, 8), // byte 3
+              D5: readBits(circleRangesOffset + 32, 8), // byte 4
+              D6: readBits(circleRangesOffset + 40, 8), // byte 5
+            };
+
             const member = {
               globalId,
               callsign,
@@ -378,6 +438,7 @@ function setupUdpClient(host: string, port: number): Promise<void> {
                 weaponsData,
                 sensorsData,
               },
+              circleRanges, // opcode102J - Circle ranges
               opcode: 102,
             };
             member.globalId = 10;
@@ -410,9 +471,13 @@ function setupUdpClient(host: string, port: number): Promise<void> {
             const tta = readBits(offset + 88, 8); // 1 byte (11)
             const engagementTargetWeaponCode = readBits(offset + 96, 8); // 1 byte (12)
             // reserved at offset 104 (byte 13)
-            const dMax1 = readI16(offset + 112); // 2 bytes (14-15), using I16 for signed
-            const dMax2 = readI16(offset + 128); // 2 bytes (16-17), using I16 for signed
-            const dmin = readI16(offset + 144); // 2 bytes (18-19), using I16 for signed
+            const dMax1Raw = readI16(offset + 112); // 2 bytes (14-15), using I16 for signed
+            const dMax2Raw = readI16(offset + 128); // 2 bytes (16-17), using I16 for signed
+            const dminRaw = readI16(offset + 144); // 2 bytes (18-19), using I16 for signed
+
+            const dMax1 = isNaN(dMax1Raw) ? NaN : dMax1Raw * DMAX1_RESOLUTION;
+            const dMax2 = isNaN(dMax2Raw) ? NaN : dMax2Raw * DMAX2_RESOLUTION;
+            const dmin = isNaN(dminRaw) ? NaN : dminRaw * DMIN_RESOLUTION;
 
             const member = {
               globalId,
@@ -433,6 +498,7 @@ function setupUdpClient(host: string, port: number): Promise<void> {
           }
 
           latestNodes = engagingMembers;
+          console.log("Engaging Members (103):", engagingMembers);
           if (mainWindow)
             mainWindow.webContents.send("data-from-main", engagingMembers);
           return;
@@ -525,6 +591,43 @@ function setupUdpClient(host: string, port: number): Promise<void> {
           latestNodes = targets;
           if (mainWindow)
             mainWindow.webContents.send("data-from-main", targets);
+          return;
+        }
+
+        if (opcode === 122) {
+          // Opcode 122 - Geo-referenced messages
+          const globalId = readU32(128); // bytes 16-19
+          const messageId = readU32(160); // bytes 20-23
+          const senderGid = readU32(192); // bytes 24-27
+          const latitude = readU32(224) * LATITUDE_RESOLUTION_122; // bytes 28-31
+          const longitude = readU32(256) * LONGITUDE_RESOLUTION_122; // bytes 32-35
+          const altitude = readI16(288) * ALTITUDE_RESOLUTION_122; // bytes 36-37
+          const missionId = readBits(304, 16); // bytes 38-39
+          const source = readBits(320, 8); // byte 40
+          const geoType = readBits(328, 8); // byte 41
+          const action = readBits(336, 8); // byte 42
+          const nodeId = readBits(344, 8); // byte 43
+          // reserved bytes 44-47 (if any)
+
+          const geoMessage = {
+            globalId,
+            messageId,
+            senderGid,
+            latitude,
+            longitude,
+            altitude,
+            missionId,
+            source,
+            geoType,
+            action,
+            nodeId,
+            opcode: 122,
+          };
+
+          latestNodes = [geoMessage];
+          console.log("Geo Message (122):", geoMessage);
+          if (mainWindow)
+            mainWindow.webContents.send("data-from-main", [geoMessage]);
           return;
         }
       });

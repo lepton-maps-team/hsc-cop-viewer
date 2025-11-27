@@ -18,7 +18,7 @@ export class NetworkMembersTable {
       position: fixed;
       left: 0;
       top: 0;
-      width: 500px;
+      width: 380px;
       max-height: calc(100vh - 20px);
       background: rgba(10, 10, 20, 0.95);
       border: 2px solid rgba(0, 255, 0, 0.6);
@@ -26,6 +26,7 @@ export class NetworkMembersTable {
       padding: 10px;
       margin: 10px;
       overflow-y: auto;
+      overflow-x: hidden;
       z-index: 200;
       font-family: 'Courier New', monospace;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
@@ -123,7 +124,8 @@ export class NetworkMembersTable {
     table.style.cssText = `
       width: 100%;
       border-collapse: collapse;
-      font-size: 11px;
+      font-size: 10px;
+      table-layout: fixed;
     `;
 
     // Table header
@@ -139,11 +141,11 @@ export class NetworkMembersTable {
       const th = document.createElement("th");
       th.textContent = headerText;
       th.style.cssText = `
-        padding: 8px 4px;
+        padding: 6px 3px;
         text-align: left;
         color: #00ff00;
         font-weight: bold;
-        font-size: 11px;
+        font-size: 10px;
       `;
       headerRow.appendChild(th);
     });
@@ -189,9 +191,14 @@ export class NetworkMembersTable {
     const callsignCell = document.createElement("td");
     callsignCell.textContent = member.callsign || `ID${member.globalId}`;
     callsignCell.style.cssText = `
-      padding: 8px 4px;
+      padding: 6px 3px;
       color: #00ff00;
       font-weight: bold;
+      font-size: 10px;
+      max-width: 100px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     `;
     if (member.internalData?.isMotherAc) {
       callsignCell.textContent += " ✈️";
@@ -203,8 +210,9 @@ export class NetworkMembersTable {
     const idCell = document.createElement("td");
     idCell.textContent = member.globalId.toString();
     idCell.style.cssText = `
-      padding: 8px 4px;
+      padding: 6px 3px;
       color: #cccccc;
+      font-size: 10px;
     `;
     row.appendChild(idCell);
 
@@ -214,19 +222,24 @@ export class NetworkMembersTable {
     const acType = member.regionalData?.acType || "";
     typeCell.textContent = `${acCategory}${acType ? `/${acType}` : ""}`;
     typeCell.style.cssText = `
-      padding: 8px 4px;
+      padding: 6px 3px;
       color: #cccccc;
-      font-size: 10px;
+      font-size: 9px;
+      max-width: 80px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     `;
     row.appendChild(typeCell);
 
     // Status indicators
     const statusCell = document.createElement("td");
     statusCell.style.cssText = `
-      padding: 8px 4px;
+      padding: 6px 3px;
       display: flex;
-      gap: 4px;
+      gap: 3px;
       flex-wrap: wrap;
+      max-width: 100px;
     `;
 
     // ACS Status
@@ -321,7 +334,7 @@ export class NetworkMembersTable {
     });
     detailsCell.appendChild(expandBtn);
     detailsCell.style.cssText = `
-      padding: 8px 4px;
+      padding: 6px 3px;
       text-align: center;
     `;
     row.appendChild(detailsCell);
@@ -342,17 +355,22 @@ export class NetworkMembersTable {
     const cell = document.createElement("td");
     cell.colSpan = 5;
     cell.style.cssText = `
-      padding: 15px;
+      padding: 12px;
       background: rgba(0, 0, 0, 0.3);
       border-top: 1px solid rgba(0, 255, 0, 0.3);
+      width: 100%;
+      box-sizing: border-box;
+      overflow-x: hidden;
     `;
 
     const detailsContainer = document.createElement("div");
     detailsContainer.style.cssText = `
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 15px;
+      grid-template-columns: 1fr;
+      gap: 12px;
       font-size: 10px;
+      width: 100%;
+      box-sizing: border-box;
     `;
 
     // Radio Frequencies and Network IDs
@@ -380,9 +398,11 @@ export class NetworkMembersTable {
     const section = document.createElement("div");
     section.style.cssText = `
       background: rgba(0, 50, 0, 0.3);
-      padding: 10px;
+      padding: 8px;
       border-radius: 4px;
       border: 1px solid rgba(0, 255, 0, 0.2);
+      width: 100%;
+      box-sizing: border-box;
     `;
 
     const title = document.createElement("div");
@@ -396,9 +416,30 @@ export class NetworkMembersTable {
     section.appendChild(title);
 
     const radioData = member.radioData || {};
+
+    // Helper function to format legacy frequency objects
+    // D1-D6 represent digits of a frequency (e.g., 123.456 MHz)
+    const formatLegacyFreq = (freq: any): string => {
+      if (!freq || typeof freq !== "object") return "N/A";
+      const digits = [freq.D1, freq.D2, freq.D3, freq.D4, freq.D5, freq.D6].map(
+        (v) => (v !== undefined && v !== null ? v : 0)
+      );
+
+      // Check if all digits are zero
+      if (digits.every((d) => d === 0)) return "N/A";
+
+      // Format as frequency: D1D2D.D3D4D5D6 (e.g., 123.456)
+      // Or if it's a 6-digit number, format as D1D2D.D3D4D5D6
+      const freqStr = digits.map((d) => d.toString()).join("");
+      if (freqStr.length >= 3) {
+        return `${freqStr.slice(0, 3)}.${freqStr.slice(3)} MHz`;
+      }
+      return freqStr || "N/A";
+    };
+
     const items = [
-      { label: "Legacy Freq 1", value: radioData.legacyFreq1 },
-      { label: "Legacy Freq 2", value: radioData.legacyFreq2 },
+      { label: "Legacy Freq 1", value: radioData.legacyFreq1, isObject: true },
+      { label: "Legacy Freq 2", value: radioData.legacyFreq2, isObject: true },
       { label: "MANET L Net ID", value: radioData.manetLNetId },
       { label: "MANET U1 Net ID", value: radioData.manetU1NetId },
       { label: "MANET U2 Net ID", value: radioData.manetU2NetId },
@@ -415,9 +456,18 @@ export class NetworkMembersTable {
           margin-bottom: 4px;
           color: #cccccc;
         `;
+
+        // Format the value - handle objects for legacy frequencies
+        let displayValue: string;
+        if (item.isObject && typeof item.value === "object") {
+          displayValue = formatLegacyFreq(item.value);
+        } else {
+          displayValue = item.value?.toString() || "N/A";
+        }
+
         div.innerHTML = `
           <span>${item.label}:</span>
-          <span style="color: #00ff00; font-weight: bold;">${item.value}</span>
+          <span style="color: #00ff00; font-weight: bold;">${displayValue}</span>
         `;
         section.appendChild(div);
       }
@@ -430,9 +480,11 @@ export class NetworkMembersTable {
     const section = document.createElement("div");
     section.style.cssText = `
       background: rgba(50, 0, 0, 0.3);
-      padding: 10px;
+      padding: 8px;
       border-radius: 4px;
       border: 1px solid rgba(255, 0, 0, 0.2);
+      width: 100%;
+      box-sizing: border-box;
     `;
 
     const title = document.createElement("div");
@@ -526,9 +578,11 @@ export class NetworkMembersTable {
     const section = document.createElement("div");
     section.style.cssText = `
       background: rgba(0, 0, 50, 0.3);
-      padding: 10px;
+      padding: 8px;
       border-radius: 4px;
       border: 1px solid rgba(0, 100, 255, 0.2);
+      width: 100%;
+      box-sizing: border-box;
     `;
 
     const title = document.createElement("div");
@@ -594,9 +648,14 @@ export class NetworkMembersTable {
     const section = document.createElement("div");
     section.style.cssText = `
       background: rgba(50, 50, 0, 0.3);
-      padding: 10px;
+      padding: 3px;
       border-radius: 4px;
       border: 1px solid rgba(255, 255, 0, 0.2);
+      width: 100%;
+      max-height: 90px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      box-sizing: border-box;
     `;
 
     const title = document.createElement("div");
@@ -604,8 +663,8 @@ export class NetworkMembersTable {
     title.style.cssText = `
       color: #ffff00;
       font-weight: bold;
-      margin-bottom: 8px;
-      font-size: 11px;
+      margin-bottom: 1px;
+      font-size: 8px;
     `;
     section.appendChild(title);
 
@@ -628,16 +687,17 @@ export class NetworkMembersTable {
       centerAz !== undefined
     ) {
       const radarCanvas = document.createElement("canvas");
-      radarCanvas.width = 150;
-      radarCanvas.height = 150;
+      radarCanvas.width = 50;
+      radarCanvas.height = 50;
       radarCanvas.style.cssText = `
-        width: 150px;
-        height: 150px;
-        margin: 8px auto;
+        width: 50px;
+        height: 50px;
+        margin: 1px auto;
         display: block;
         background: rgba(0, 0, 0, 0.5);
-        border: 2px solid rgba(255, 255, 0, 0.3);
+        border: 1px solid rgba(255, 255, 0, 0.3);
         border-radius: 50%;
+        max-width: 100%;
       `;
       this.drawRadarOverlay(
         radarCanvas,
@@ -650,52 +710,73 @@ export class NetworkMembersTable {
       section.appendChild(radarCanvas);
     }
 
-    // Text information
+    // Text information - combine into compact format
+    const infoDiv = document.createElement("div");
+    infoDiv.style.cssText = `
+      color: #cccccc;
+      margin-top: 1px;
+      font-size: 7px;
+      text-align: center;
+      line-height: 1.1;
+    `;
+    const infoParts: string[] = [];
     if (heading !== undefined) {
-      const headingDiv = document.createElement("div");
-      headingDiv.style.cssText = `
-        color: #cccccc;
-        margin-bottom: 6px;
-        font-size: 10px;
-        text-align: center;
-      `;
-      headingDiv.innerHTML = `
-        <span>Heading:</span>
-        <span style="color: #ffff00; font-weight: bold;">${heading.toFixed(1)}°</span>
-      `;
-      section.appendChild(headingDiv);
+      infoParts.push(
+        `H: <span style="color: #ffff00;">${heading.toFixed(1)}°</span>`
+      );
     }
-
-    // Coverage zones text
     if (coverageAz !== undefined || coverageEl !== undefined) {
-      const coverageDiv = document.createElement("div");
-      coverageDiv.style.cssText = `
-        color: #cccccc;
-        margin-bottom: 6px;
-        font-size: 10px;
-        text-align: center;
-      `;
-      coverageDiv.innerHTML = `
-        <div>Coverage Az: <span style="color: #ffff00;">${coverageAz !== undefined ? coverageAz.toFixed(1) + "°" : "N/A"}</span></div>
-        <div>Coverage El: <span style="color: #ffff00;">${coverageEl !== undefined ? coverageEl.toFixed(1) + "°" : "N/A"}</span></div>
-      `;
-      section.appendChild(coverageDiv);
+      const az = coverageAz !== undefined ? coverageAz.toFixed(1) + "°" : "N/A";
+      const el = coverageEl !== undefined ? coverageEl.toFixed(1) + "°" : "N/A";
+      infoParts.push(
+        `Cov: <span style="color: #ffff00;">Az${az} El${el}</span>`
+      );
+    }
+    if (centerAz !== undefined || centerEl !== undefined) {
+      const az = centerAz !== undefined ? centerAz.toFixed(1) + "°" : "N/A";
+      const el = centerEl !== undefined ? centerEl.toFixed(1) + "°" : "N/A";
+      infoParts.push(
+        `Ctr: <span style="color: #ffff00;">Az${az} El${el}</span>`
+      );
+    }
+    if (infoParts.length > 0) {
+      infoDiv.innerHTML = infoParts.join(" | ");
+      section.appendChild(infoDiv);
     }
 
-    // Center zones text
-    if (centerAz !== undefined || centerEl !== undefined) {
-      const centerDiv = document.createElement("div");
-      centerDiv.style.cssText = `
-        color: #cccccc;
-        margin-top: 6px;
-        font-size: 10px;
-        text-align: center;
-      `;
-      centerDiv.innerHTML = `
-        <div>Center Az: <span style="color: #ffff00;">${centerAz !== undefined ? centerAz.toFixed(1) + "°" : "N/A"}</span></div>
-        <div>Center El: <span style="color: #ffff00;">${centerEl !== undefined ? centerEl.toFixed(1) + "°" : "N/A"}</span></div>
-      `;
-      section.appendChild(centerDiv);
+    // Circle Ranges from opcode102J
+    const circleRanges = member.circleRanges;
+    if (circleRanges) {
+      const ranges: number[] = [];
+      if (circleRanges.D1 !== undefined && circleRanges.D1 !== 0)
+        ranges.push(circleRanges.D1);
+      if (circleRanges.D2 !== undefined && circleRanges.D2 !== 0)
+        ranges.push(circleRanges.D2);
+      if (circleRanges.D3 !== undefined && circleRanges.D3 !== 0)
+        ranges.push(circleRanges.D3);
+      if (circleRanges.D4 !== undefined && circleRanges.D4 !== 0)
+        ranges.push(circleRanges.D4);
+      if (circleRanges.D5 !== undefined && circleRanges.D5 !== 0)
+        ranges.push(circleRanges.D5);
+      if (circleRanges.D6 !== undefined && circleRanges.D6 !== 0)
+        ranges.push(circleRanges.D6);
+
+      if (ranges.length > 0) {
+        const rangesDiv = document.createElement("div");
+        rangesDiv.style.cssText = `
+          color: #cccccc;
+          margin-top: 1px;
+          padding-top: 1px;
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          font-size: 7px;
+          text-align: center;
+          line-height: 1.1;
+        `;
+        rangesDiv.innerHTML = `
+          <span style="color: #ffff00; font-weight: bold;">Ranges:</span> ${ranges.map((r, idx) => `<span style="color: #ffff00;">C${idx + 1}:${r}NM</span>`).join(" ")}
+        `;
+        section.appendChild(rangesDiv);
+      }
     }
 
     // Locks
@@ -705,13 +786,14 @@ export class NetworkMembersTable {
     if (q1Lock || q2Lock || radarLock) {
       const locksDiv = document.createElement("div");
       locksDiv.style.cssText = `
-        margin-top: 8px;
-        padding-top: 8px;
+        margin-top: 1px;
+        padding-top: 1px;
         border-top: 1px solid rgba(255, 255, 255, 0.1);
         color: #ff4444;
-        font-size: 9px;
+        font-size: 7px;
         font-weight: bold;
         text-align: center;
+        line-height: 1.1;
       `;
       locksDiv.textContent = `LOCKS: Q1:${q1Lock || "N/A"} Q2:${q2Lock || "N/A"} Radar:${radarLock || "N/A"}`;
       section.appendChild(locksDiv);

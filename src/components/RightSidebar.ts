@@ -18,6 +18,7 @@ export class RightSidebar {
     onToggleCenterMode: () => void,
     onToggleThreatDialog: () => void
   ): HTMLElement {
+    console.log("zoomLevel in right sidebar", zoomLevel);
     const sidebar = document.createElement("div");
     sidebar.style.cssText = `
       position: fixed;
@@ -132,18 +133,16 @@ export class RightSidebar {
       font-size: 10px;
       font-weight: bold;
       text-align: center;
-      writing-mode: vertical-rl;
-      text-orientation: mixed;
-      min-height: 40px;
+      min-width: 40px;
       display: flex;
       align-items: center;
       justify-content: center;
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
       background: rgba(40, 40, 50, 0.5);
-      padding: 4px 2px;
+      padding: 4px 6px;
       border-radius: 4px;
     `;
-    zoomDisplay.textContent = `Z${Math.round(zoomLevel)}`;
+    zoomDisplay.textContent = `${zoomLevel}`;
     this.zoomDisplay = zoomDisplay;
 
     const zoomInButton = document.createElement("button");
@@ -173,69 +172,6 @@ export class RightSidebar {
     zoomInButton.addEventListener("mouseleave", () => {
       zoomInButton.style.background = "rgba(60, 60, 70, 0.9)";
       zoomInButton.style.borderColor = "rgba(100, 100, 120, 0.6)";
-    });
-
-    const fullscreenButton = document.createElement("button");
-    fullscreenButton.textContent = "⛶";
-    fullscreenButton.style.cssText = `
-      width: 40px;
-      height: 30px;
-      background: rgba(60, 60, 70, 0.9);
-      color: white;
-      border: 1.5px solid rgba(100, 100, 120, 0.6);
-      border-radius: 4px;
-      cursor: pointer;
-      font-family: monospace;
-      font-size: 14px;
-      font-weight: bold;
-      transition: all 0.3s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    `;
-    fullscreenButton.addEventListener("click", () => {
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      } else {
-        document.documentElement.requestFullscreen();
-      }
-    });
-    fullscreenButton.addEventListener("mouseenter", () => {
-      fullscreenButton.style.background = "rgba(80, 80, 90, 0.95)";
-      fullscreenButton.style.borderColor = "rgba(120, 120, 140, 0.8)";
-    });
-    fullscreenButton.addEventListener("mouseleave", () => {
-      fullscreenButton.style.background = "rgba(60, 60, 70, 0.9)";
-      fullscreenButton.style.borderColor = "rgba(100, 100, 120, 0.6)";
-    });
-
-    const toggleNodesButton = document.createElement("button");
-    toggleNodesButton.textContent = showOtherNodes ? "HIDE" : "SHOW";
-    toggleNodesButton.style.cssText = `
-      width: 40px;
-      height: 30px;
-      background: ${showOtherNodes ? "#ff4444" : "#44ff44"};
-      color: white;
-      border: 1.5px solid ${showOtherNodes ? "#ff6666" : "#66ff66"};
-      border-radius: 4px;
-      cursor: pointer;
-      font-family: monospace;
-      font-size: 8px;
-      font-weight: bold;
-      transition: all 0.3s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-top: 10px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    `;
-    toggleNodesButton.addEventListener("click", onToggleNodes);
-    toggleNodesButton.addEventListener("mouseenter", () => {
-      toggleNodesButton.style.opacity = "0.8";
-    });
-    toggleNodesButton.addEventListener("mouseleave", () => {
-      toggleNodesButton.style.opacity = "1";
     });
 
     const toggleMapButton = document.createElement("button");
@@ -275,72 +211,12 @@ export class RightSidebar {
       toggleMapButton.style.opacity = "1";
     });
 
-    const centerModeButton = document.createElement("button");
-    centerModeButton.textContent = centerMode === "mother" ? "MTR" : "SELF";
-    centerModeButton.style.cssText = `
-      width: 40px;
-      height: 30px;
-      background: ${centerMode === "mother" ? "#4488ff" : "#ff8844"};
-      color: white;
-      border: 1.5px solid ${centerMode === "mother" ? "#66aaff" : "#ffaa66"};
-      border-radius: 4px;
-      cursor: pointer;
-      font-family: monospace;
-      font-size: 8px;
-      font-weight: bold;
-      transition: all 0.3s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-top: 5px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    `;
-    centerModeButton.addEventListener("click", onToggleCenterMode);
-    centerModeButton.addEventListener("mouseenter", () => {
-      centerModeButton.style.opacity = "0.8";
-    });
-    centerModeButton.addEventListener("mouseleave", () => {
-      centerModeButton.style.opacity = "1";
-    });
-
-    const threatDialogButton = document.createElement("button");
-    threatDialogButton.textContent = "THRT";
-    threatDialogButton.style.cssText = `
-      width: 40px;
-      height: 30px;
-      background: #ff4444;
-      color: white;
-      border: 1.5px solid #ff6666;
-      border-radius: 4px;
-      cursor: pointer;
-      font-family: monospace;
-      font-size: 8px;
-      font-weight: bold;
-      transition: all 0.3s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-top: 5px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    `;
-    threatDialogButton.addEventListener("click", onToggleThreatDialog);
-    threatDialogButton.addEventListener("mouseenter", () => {
-      threatDialogButton.style.opacity = "0.8";
-    });
-    threatDialogButton.addEventListener("mouseleave", () => {
-      threatDialogButton.style.opacity = "1";
-    });
-
     sidebar.appendChild(button101);
     sidebar.appendChild(button102);
     sidebar.appendChild(zoomOutButton);
     sidebar.appendChild(zoomDisplay);
     sidebar.appendChild(zoomInButton);
-    sidebar.appendChild(fullscreenButton);
-    sidebar.appendChild(toggleNodesButton);
     sidebar.appendChild(toggleMapButton);
-    sidebar.appendChild(centerModeButton);
-    sidebar.appendChild(threatDialogButton);
 
     container.appendChild(sidebar);
     return sidebar;
@@ -348,7 +224,7 @@ export class RightSidebar {
 
   public updateZoomDisplay(zoomLevel: number): void {
     if (this.zoomDisplay) {
-      this.zoomDisplay.textContent = `Z${Math.round(zoomLevel)}`;
+      this.zoomDisplay.textContent = `${zoomLevel}`;
     }
   }
 }

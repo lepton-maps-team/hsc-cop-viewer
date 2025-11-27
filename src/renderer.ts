@@ -3,17 +3,18 @@ import { MapManager } from "./map";
 import { Aircraft, AircraftType } from "./types";
 import { ThreatDialog } from "./components/ThreatDialog";
 import { RightSidebar } from "./components/RightSidebar";
-import { BottomBar } from "./components/BottomBar";
 import { DebugInfo } from "./components/DebugInfo";
 import { AdaptiveRadarCircles } from "./components/AdaptiveRadarCircles";
 import { AircraftRenderer } from "./components/AircraftRenderer";
 import { UDPNodesManager, UDPDataPoint } from "./components/UDPNodesManager";
 import { NetworkMembersTable } from "./components/NetworkMembersTable";
+import { EngagementManager } from "./components/EngagementManager";
+import { GeoMessageManager } from "./components/GeoMessageManager";
 
 class TacticalDisplayClient {
   private aircraft: Map<string, Aircraft> = new Map();
   private nodeId: string = "";
-  private zoomLevel: number = 1;
+  private zoomLevel: number = 5;
   private showOtherNodes: boolean = true;
   private mapManager: MapManager | null = null;
   private centerMode: "mother" | "self" = "mother";
@@ -25,11 +26,12 @@ class TacticalDisplayClient {
   // Components
   private threatDialog: ThreatDialog;
   private rightSidebar: RightSidebar;
-  private bottomBar: BottomBar;
   private debugInfo: DebugInfo;
   private adaptiveRadarCircles: AdaptiveRadarCircles;
   private aircraftRenderer: AircraftRenderer;
   private networkMembersTable: NetworkMembersTable;
+  private engagementManager: EngagementManager;
+  private geoMessageManager: GeoMessageManager;
   private simulationSystem: {
     isRunning: boolean;
     startTime: number;
@@ -74,13 +76,14 @@ class TacticalDisplayClient {
       (aircraft) => this.executeThreat(aircraft)
     );
     this.rightSidebar = new RightSidebar();
-    this.bottomBar = new BottomBar();
     this.debugInfo = new DebugInfo();
     this.adaptiveRadarCircles = new AdaptiveRadarCircles();
     this.aircraftRenderer = new AircraftRenderer((aircraft) =>
       this.showAircraftDetails(aircraft)
     );
     this.networkMembersTable = new NetworkMembersTable();
+    this.engagementManager = new EngagementManager(this.mapManager);
+    this.geoMessageManager = new GeoMessageManager(this.mapManager);
 
     this.initialize();
   }
@@ -100,15 +103,21 @@ class TacticalDisplayClient {
       if (this.udpNodesManager.hasDataPoints() && this.mapManager) {
         this.udpNodesManager.updateUDPDots();
         this.udpNodesManager.updateConnectionLines();
+        this.engagementManager.updateLines();
       }
     });
 
     // Listen for map zoom changes
     window.addEventListener("map-zoom-changed", () => {
+      const currentZoom = this.mapManager?.getZoom();
+      if (typeof currentZoom === "number" && Number.isFinite(currentZoom)) {
+        this.zoomLevel = currentZoom;
+      }
       this.updateZoomDisplay();
       if (this.udpNodesManager.hasDataPoints() && this.mapManager) {
         this.udpNodesManager.updateUDPDots();
         this.udpNodesManager.updateConnectionLines();
+        this.engagementManager.updateLines();
       }
     });
 
@@ -119,6 +128,22 @@ class TacticalDisplayClient {
         // Update network members table
         const networkMembers = this.udpNodesManager.getNetworkMembers();
         this.networkMembersTable.update(networkMembers);
+
+        // Handle opcode 103 engagement data
+        const engagementData = data.filter((point) => point.opcode === 103);
+        if (engagementData.length > 0) {
+          // Update engagement manager with UDP data points for position lookup
+          this.engagementManager.setUDPDataPoints(
+            this.udpNodesManager.getAllNodesMap()
+          );
+          this.engagementManager.updateEngagements(engagementData as any);
+        }
+
+        // Handle opcode 122 geo-referenced messages
+        const geoMessageData = data.filter((point) => point.opcode === 122);
+        if (geoMessageData.length > 0) {
+          this.geoMessageManager.updateMessages(geoMessageData as any);
+        }
       });
     }
 
@@ -181,11 +206,10 @@ class TacticalDisplayClient {
 
     let centerAircraft: Aircraft | null = null;
 
-    const mapZoom = this.mapManager?.getZoom() || 7;
     this.rightSidebar.create(
       container,
       this.viewMode,
-      mapZoom,
+      this.zoomLevel,
       this.showOtherNodes,
       this.centerMode,
       this.mapManager,
@@ -250,6 +274,12 @@ class TacticalDisplayClient {
       );
       this.udpNodesManager.setMapManager(this.mapManager);
       this.networkMembersTable.setMapManager(this.mapManager);
+      this.engagementManager.setMapManager(this.mapManager);
+      this.geoMessageManager.setMapManager(this.mapManager);
+
+      // Initialize engagement manager containers
+      this.engagementManager.initializeContainers(visualizationArea);
+      this.engagementManager.createEngagementList(container);
 
       // Set callbacks for red node actions
       this.udpNodesManager.setRedNodeCallbacks(
@@ -272,6 +302,13 @@ class TacticalDisplayClient {
       this.mapManager.getMapboxMap()?.on("load", () => {
         this.udpNodesManager.updateUDPDots();
         this.udpNodesManager.updateConnectionLines();
+        this.engagementManager.updateLines();
+        // Re-update geo messages when map loads
+        const allData = this.udpNodesManager.getAllNodes();
+        const geoMessages = allData.filter((point) => point.opcode === 122);
+        if (geoMessages.length > 0) {
+          this.geoMessageManager.updateMessages(geoMessages as any);
+        }
       });
 
       // Update connection lines on map move/zoom for smooth updates
@@ -280,6 +317,7 @@ class TacticalDisplayClient {
           this.udpNodesManager.updateUDPDots();
           this.udpNodesManager.updateConnectionLines();
           this.udpNodesManager.updateRadarCircles();
+          this.engagementManager.updateLines();
         }
       });
 
@@ -350,18 +388,13 @@ class TacticalDisplayClient {
         this.zoomLevel,
         (deltaLat, deltaLng) => this.convertToCartesian(deltaLat, deltaLng),
         (adaptiveRange, maxDistance) => {
-          this.bottomBar.updateRangeInfo(
-            this.zoomLevel,
-            this.aircraft.size - 1,
-            maxDistance
-          );
+          // Range info update removed
         }
       );
     }
 
     if (!centerAircraft) {
       // No center aircraft available, skip rendering
-      this.bottomBar.create(container);
       this.debugInfo.create(container, this.aircraft, this.nodeId);
       this.networkMembersTable.create(container);
 
@@ -462,8 +495,6 @@ class TacticalDisplayClient {
       visualizationArea.appendChild(aircraftElement);
     });
 
-    this.bottomBar.create(container);
-
     this.debugInfo.create(container, this.aircraft, this.nodeId);
 
     // Update network members table with current data
@@ -513,36 +544,36 @@ class TacticalDisplayClient {
   }
 
   private zoomIn() {
-    if (!this.mapManager) return;
-    const currentZoom = this.mapManager.getZoom();
-    if (currentZoom !== null && currentZoom < 13) {
-      const newZoom = currentZoom + 1;
-      // Preserve current center, only change zoom
+    this.zoomLevel = Math.min(this.zoomLevel + 1, 13);
+    if (this.mapManager) {
       const center = this.mapManager.getCenter();
       if (center) {
-        this.mapManager.updateCenter(center.lat, center.lng, newZoom);
+        this.mapManager.updateCenter(center.lat, center.lng, this.zoomLevel);
+      } else {
+        this.mapManager.setZoom(this.zoomLevel);
       }
-      this.updateZoomDisplay();
     }
+    this.updateZoomDisplay();
   }
 
   private zoomOut() {
-    if (!this.mapManager) return;
-    const currentZoom = this.mapManager.getZoom();
-    if (currentZoom !== null && currentZoom > 1) {
-      const newZoom = currentZoom - 1;
-      // Preserve current center, only change zoom
+    if (this.zoomLevel <= 1) {
+      return;
+    }
+    this.zoomLevel = Math.max(this.zoomLevel - 1, 1);
+    if (this.mapManager) {
       const center = this.mapManager.getCenter();
       if (center) {
-        this.mapManager.updateCenter(center.lat, center.lng, newZoom);
+        this.mapManager.updateCenter(center.lat, center.lng, this.zoomLevel);
+      } else {
+        this.mapManager.setZoom(this.zoomLevel);
       }
-      this.updateZoomDisplay();
     }
+    this.updateZoomDisplay();
   }
 
   private updateZoomDisplay() {
-    const mapZoom = this.mapManager?.getZoom() || 7;
-    this.rightSidebar.updateZoomDisplay(mapZoom);
+    this.rightSidebar.updateZoomDisplay(this.zoomLevel);
   }
 
   private toggleOtherNodesVisibility() {

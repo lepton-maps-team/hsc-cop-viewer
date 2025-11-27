@@ -724,16 +724,32 @@ export class UDPNodesManager {
 
         // Use locked icon if either manually locked or threat-locked via opcode 106
         const useLockedIcon = isLocked || isThreatLocked;
-        const iconFile =
-          point.opcode === 104
-            ? "hostile_aircraft.svg" // Same icon, but will have different glow/visual indicator
-            : "friendly_aircraft.svg";
-        // Use different glow color for locked nodes
-        const glowColor = useLockedIcon
-          ? "#ffaa00" // Orange for locked (either manually or via opcode 106)
-          : point.opcode === 104
-            ? "#ff0000" // Red for 104 (unlocked threats)
-            : "#00ff00"; // Green for 101
+
+        // Check if this is a mother aircraft
+        const isMotherAc =
+          point.internalData && point.internalData.isMotherAc === 1;
+
+        // Determine icon file - prioritize mother aircraft icon
+        let iconFile: string;
+        if (isMotherAc) {
+          iconFile = "mother-aircraft.svg";
+        } else if (point.opcode === 104) {
+          iconFile = "hostile_aircraft.svg"; // Same icon, but will have different glow/visual indicator
+        } else {
+          iconFile = "friendly_aircraft.svg";
+        }
+
+        // Use different glow color for locked nodes or mother aircraft
+        let glowColor: string;
+        if (useLockedIcon) {
+          glowColor = "#ffaa00"; // Orange for locked (either manually or via opcode 106)
+        } else if (isMotherAc) {
+          glowColor = "#ffaa00"; // Orange/amber for mother aircraft
+        } else if (point.opcode === 104) {
+          glowColor = "#ff0000"; // Red for 104 (unlocked threats)
+        } else {
+          glowColor = "#00ff00"; // Green for 101
+        }
 
         // Create icon element
         const iconElement = document.createElement("img");
@@ -1188,14 +1204,55 @@ export class UDPNodesManager {
     const viewportHeight = window.innerHeight - 60;
     const minDimension = Math.min(viewportWidth, viewportHeight);
 
-    // Create 3 concentric circles
-    const numCircles = 3;
-    for (let i = 1; i <= numCircles; i++) {
+    // Get circle ranges from opcode102J if available
+    let circleRanges: number[] = [];
+    if (centerGreenNode?.circleRanges) {
+      const ranges = centerGreenNode.circleRanges;
+      // Format D1-D6 as range values (combine digits to form range in NM)
+      // D1-D6 represent digits, format as D1D2D3.D4D5D6 or similar
+      const range1 =
+        ranges.D1 !== undefined && ranges.D1 !== 0 ? ranges.D1 : null;
+      const range2 =
+        ranges.D2 !== undefined && ranges.D2 !== 0 ? ranges.D2 : null;
+      const range3 =
+        ranges.D3 !== undefined && ranges.D3 !== 0 ? ranges.D3 : null;
+      const range4 =
+        ranges.D4 !== undefined && ranges.D4 !== 0 ? ranges.D4 : null;
+      const range5 =
+        ranges.D5 !== undefined && ranges.D5 !== 0 ? ranges.D5 : null;
+      const range6 =
+        ranges.D6 !== undefined && ranges.D6 !== 0 ? ranges.D6 : null;
+
+      // Use D1-D6 as individual range values (in NM)
+      if (range1 !== null) circleRanges.push(range1);
+      if (range2 !== null) circleRanges.push(range2);
+      if (range3 !== null) circleRanges.push(range3);
+      if (range4 !== null) circleRanges.push(range4);
+      if (range5 !== null) circleRanges.push(range5);
+      if (range6 !== null) circleRanges.push(range6);
+    }
+
+    // Use opcode102J ranges if available, otherwise fall back to adaptive calculation
+    const numCircles = circleRanges.length > 0 ? circleRanges.length : 3;
+    const useOpcodeRanges = circleRanges.length > 0;
+
+    for (let i = 0; i < numCircles; i++) {
       const circle = document.createElement("div");
 
-      // Calculate radius based on adaptive range
-      const rangeRatio = adaptiveRangeNM / 50;
-      const baseRadius = i * ((minDimension * 0.35 * rangeRatio) / numCircles);
+      let rangeNM: number;
+      if (useOpcodeRanges) {
+        // Use range from opcode102J
+        rangeNM = circleRanges[i];
+      } else {
+        // Calculate radius based on adaptive range (fallback)
+        const rangeRatio = adaptiveRangeNM / 50;
+        rangeNM = ((i + 1) * adaptiveRangeNM) / numCircles;
+      }
+
+      // Calculate radius based on range
+      const rangeRatio = rangeNM / 50;
+      const baseRadius =
+        ((i + 1) * (minDimension * 0.35 * rangeRatio)) / numCircles;
 
       // Use current zoom level if available
       const zoomLevel = this.mapManager?.getZoom() || 15;
@@ -1220,12 +1277,9 @@ export class UDPNodesManager {
         opacity: 0.7;
       `;
 
-      // Create range label
-      const estimatedNM = Math.round(
-        (clampedRadius / minDimension) * adaptiveRangeNM
-      );
+      // Create range label using opcode102J range or calculated value
       const rangeLabel = document.createElement("div");
-      rangeLabel.textContent = `${estimatedNM}NM`;
+      rangeLabel.textContent = `${Math.round(rangeNM)}NM`;
       rangeLabel.style.cssText = `
         position: absolute;
         top: 50%;
@@ -1734,5 +1788,12 @@ export class UDPNodesManager {
    */
   getAllNodes(): UDPDataPoint[] {
     return Array.from(this.udpDataPoints.values());
+  }
+
+  /**
+   * Get the UDP data points map (for sharing with other components)
+   */
+  getAllNodesMap(): Map<number, UDPDataPoint> {
+    return this.udpDataPoints;
   }
 }
