@@ -380,6 +380,7 @@ function setupUdpClient(host: string, port: number): Promise<void> {
               },
               opcode: 102,
             };
+            member.globalId = 10;
 
             networkMembers.push(member);
             // Move offset to next member (after all data including variable length vectors)

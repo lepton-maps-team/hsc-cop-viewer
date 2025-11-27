@@ -147,52 +147,141 @@ export class UDPNodesManager {
           const existingNode = this.udpDataPoints.get(point.globalId);
           if (existingNode) {
             // Merge opcode 102 data with existing node (preserve position from opcode 101)
-            this.udpDataPoints.set(point.globalId, {
+            // Deep merge nested objects to preserve all opcode 102 data
+            const mergedNode = {
               ...existingNode,
               ...point,
-              latitude:
-                point.latitude !== undefined
-                  ? point.latitude
-                  : existingNode.latitude,
-              longitude:
-                point.longitude !== undefined
-                  ? point.longitude
-                  : existingNode.longitude,
+              // Preserve position from existing node (opcode 101)
+              latitude: existingNode.latitude,
+              longitude: existingNode.longitude,
+              altitude:
+                point.altitude !== undefined
+                  ? point.altitude
+                  : existingNode.altitude,
+              // Preserve callsign from opcode 102
+              callsign: point.callsign || existingNode.callsign,
+              // Deep merge nested objects
+              internalData: point.internalData
+                ? {
+                    ...existingNode.internalData,
+                    ...point.internalData,
+                  }
+                : existingNode.internalData,
+              regionalData: point.regionalData
+                ? {
+                    ...existingNode.regionalData,
+                    ...point.regionalData,
+                    // Deep merge metadata within regionalData
+                    metadata: {
+                      ...existingNode.regionalData?.metadata,
+                      ...point.regionalData?.metadata,
+                    },
+                  }
+                : existingNode.regionalData,
+              battleGroupData: point.battleGroupData
+                ? {
+                    ...existingNode.battleGroupData,
+                    ...point.battleGroupData,
+                  }
+                : existingNode.battleGroupData,
+              radioData: point.radioData
+                ? {
+                    ...existingNode.radioData,
+                    ...point.radioData,
+                  }
+                : existingNode.radioData,
               opcode: existingNode.opcode || 101, // Keep original opcode (usually 101 for green nodes)
-            });
+            };
+            this.udpDataPoints.set(point.globalId, mergedNode);
             console.log(
-              `📍 Merged opcode 102 data with node ${point.globalId}: callsign=${point.callsign || "N/A"}, isMotherAc=${point.internalData?.isMotherAc || 0}`
+              `📍 Merged opcode 102 data with node ${point.globalId}: callsign=${mergedNode.callsign || "N/A"}, isMotherAc=${mergedNode.internalData?.isMotherAc || 0}, hasMetadata=${!!mergedNode.regionalData?.metadata}, metadataKeys=${mergedNode.regionalData?.metadata ? Object.keys(mergedNode.regionalData.metadata).join(",") : "none"}`
             );
-          } else if (
-            point.latitude !== undefined &&
-            point.longitude !== undefined
-          ) {
-            // New opcode 102 node with position data
+          } else {
+            // Opcode 102 data without existing node - store it anyway (might get position later from opcode 101)
+            // But we need at least some identifier, so store it with a flag
+            console.log(
+              `⚠️ Opcode 102 data for globalId ${point.globalId} but no existing node found. Waiting for opcode 101 position data.`
+            );
+            // Store it temporarily - it will be merged when opcode 101 arrives
             this.udpDataPoints.set(point.globalId, {
               ...point,
-              opcode: 101, // Treat as green node
+              opcode: 101, // Mark as green node type
+              // No position yet - will be added when opcode 101 arrives
             });
-            console.log(
-              `📍 Added new node ${point.globalId} from opcode 102: lat=${point.latitude}, lng=${point.longitude}, callsign=${point.callsign || "N/A"}`
-            );
           }
         } else if (
           point.latitude !== undefined &&
           point.longitude !== undefined
         ) {
           // For other opcodes (101, 104), require position data
-          // Coordinates are already converted in main.ts, use them directly
-          // Update or add the point (preserve opcode if present)
-          this.udpDataPoints.set(point.globalId, {
-            ...point,
-            latitude: point.latitude,
-            longitude: point.longitude,
-            opcode: point.opcode, // Preserve opcode (101 or 104)
-          });
+          // Check if there's existing opcode 102 data to merge with (check for callsign or other opcode 102 fields)
+          const existingNode = this.udpDataPoints.get(point.globalId);
+          const hasOpcode102Data =
+            existingNode &&
+            (existingNode.callsign !== undefined ||
+              existingNode.internalData !== undefined ||
+              existingNode.regionalData !== undefined ||
+              existingNode.battleGroupData !== undefined);
 
-          console.log(
-            `📍 Updated node ${point.globalId} (opcode ${point.opcode}): lat=${point.latitude}, lng=${point.longitude}`
-          );
+          if (hasOpcode102Data) {
+            // Merge position data from opcode 101/104 with existing opcode 102 metadata
+            this.udpDataPoints.set(point.globalId, {
+              ...existingNode,
+              ...point,
+              // Use new position data
+              latitude: point.latitude,
+              longitude: point.longitude,
+              // Preserve callsign from opcode 102
+              callsign: existingNode.callsign || point.callsign,
+              // Deep merge nested objects to preserve opcode 102 data
+              internalData: existingNode.internalData
+                ? {
+                    ...existingNode.internalData,
+                    ...point.internalData,
+                  }
+                : point.internalData,
+              regionalData: existingNode.regionalData
+                ? {
+                    ...existingNode.regionalData,
+                    ...point.regionalData,
+                    metadata: {
+                      ...existingNode.regionalData?.metadata,
+                      ...point.regionalData?.metadata,
+                    },
+                  }
+                : point.regionalData,
+              battleGroupData: existingNode.battleGroupData
+                ? {
+                    ...existingNode.battleGroupData,
+                    ...point.battleGroupData,
+                  }
+                : point.battleGroupData,
+              radioData: existingNode.radioData
+                ? {
+                    ...existingNode.radioData,
+                    ...point.radioData,
+                  }
+                : point.radioData,
+              opcode: point.opcode, // Use the new opcode (101 or 104)
+            });
+            console.log(
+              `📍 Merged position data (opcode ${point.opcode}) with opcode 102 metadata for node ${point.globalId}: callsign=${existingNode.callsign || "N/A"}, hasMetadata=${!!existingNode.regionalData?.metadata}`
+            );
+          } else {
+            // Normal update/add for opcodes 101, 104
+            // Coordinates are already converted in main.ts, use them directly
+            // Update or add the point (preserve opcode if present)
+            this.udpDataPoints.set(point.globalId, {
+              ...point,
+              latitude: point.latitude,
+              longitude: point.longitude,
+              opcode: point.opcode, // Preserve opcode (101 or 104)
+            });
+
+            console.log(
+              `📍 Updated node ${point.globalId} (opcode ${point.opcode}): lat=${point.latitude}, lng=${point.longitude}`
+            );
+          }
         }
       }
     });
@@ -1436,6 +1525,21 @@ export class UDPNodesManager {
     const groundSpeed =
       metadata.groundSpeed !== undefined ? metadata.groundSpeed : NaN;
     const mach = metadata.mach !== undefined ? metadata.mach : NaN;
+
+    // Debug logging to see what data is available
+    console.log(`🔍 Green node dialog for ${node.globalId}:`, {
+      callsign: callsign,
+      isMotherAc: isMotherAc,
+      hasInternalData: !!node.internalData,
+      internalData: node.internalData,
+      hasRegionalData: !!node.regionalData,
+      regionalData: node.regionalData,
+      hasMetadata: !!metadata && Object.keys(metadata).length > 0,
+      metadata: metadata,
+      baroAltitude: baroAltitude,
+      groundSpeed: groundSpeed,
+      mach: mach,
+    });
 
     // Create dialog
     const dialog = document.createElement("div");
