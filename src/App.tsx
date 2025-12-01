@@ -38,6 +38,8 @@ const App: React.FC = () => {
     processUDPData,
   } = useStore();
 
+  console.log(notification);
+
   const visualizationAreaRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
