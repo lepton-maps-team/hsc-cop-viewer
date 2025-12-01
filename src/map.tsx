@@ -1,212 +1,48 @@
+import React, { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import { indianCitiesData } from "./text-layers";
+import { MapManagerInstance, MapProps } from "./lib/types";
 
-export type Aircraft = {
-  id: string;
-  lat: number;
-  lng: number;
-  callSign: string;
-  aircraftType: "mother" | "friendly" | "threat" | "self";
-  isLocked?: boolean;
-  isExecuted?: boolean;
-};
-
-/**
- * MapManager: Simple map manager for displaying map tiles.
- */
-export class MapManager {
-  private mapboxMap: mapboxgl.Map | null = null;
-  private mapElement: HTMLElement | null = null;
-  private labelsContainer: HTMLElement | null = null;
-  private container: HTMLElement | null = null;
-  private initialLat: number = 0;
-  private initialLng: number = 0;
-  private currentTileSource: string = "/tiles-map/{z}/{x}/{y}.png";
-
-  /**
-   * Constructor: Creates and adds the map to the document.
-   */
-  constructor(container: HTMLElement, lat: number, lng: number) {
-    this.container = container;
-    this.initialLat = lat;
-    this.initialLng = lng;
-
-    // Set Mapbox access token
-    mapboxgl.accessToken =
-      "pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw";
-
-    // Create map container
-    const mapContainer = document.createElement("div");
-    mapContainer.id = "map-background";
-    mapContainer.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 0;
-      opacity: 1;
-      pointer-events: none;
-      display: block;
-      visibility: visible;
-      transform: translateZ(0);
-      will-change: transform;
-      backface-visibility: hidden;
-      -webkit-font-smoothing: antialiased;
-    `;
-
-    container.appendChild(mapContainer);
-    this.mapElement = mapContainer;
-
-    // Create container for HTML-based city labels
-    const labelsContainer = document.createElement("div");
-    labelsContainer.id = "city-labels-container";
-    labelsContainer.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 2;
-    `;
-    container.appendChild(labelsContainer);
-    this.labelsContainer = labelsContainer;
-
-    // Ensure container has minimum dimensions
-    if (mapContainer.clientWidth === 0 || mapContainer.clientHeight === 0) {
-      mapContainer.style.width = "100%";
-      mapContainer.style.height = "100%";
-      mapContainer.style.minWidth = "100px";
-      mapContainer.style.minHeight = "100px";
-    }
-
-    // Initialize map with default tile source
-    this.currentTileSource = "/tiles-map/{z}/{x}/{y}.png";
-    this.initializeMap(this.currentTileSource, lat, lng);
+// Store mapManager in globalThis
+declare global {
+  interface Window {
+    mapManager: MapManagerInstance | null;
+    mapRef: mapboxgl.Map | null;
   }
+}
 
-  public updateCenter(lat: number, lng: number, zoom?: number): void {
-    if (!this.mapboxMap) return;
-    const jumpOptions: mapboxgl.CameraOptions = {
-      center: [lng, lat],
-    };
-    if (typeof zoom === "number" && Number.isFinite(zoom)) {
-      jumpOptions.zoom = zoom;
-    }
-    this.mapboxMap.jumpTo(jumpOptions);
-  }
+const Map: React.FC<MapProps> = ({
+  container,
+  initialLat,
+  initialLng,
+  onMapReady,
+}) => {
+  const mapboxMapRef = useRef<mapboxgl.Map | null>(null);
+  const mapElementRef = useRef<HTMLDivElement | null>(null);
+  const labelsContainerRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLElement | null>(null);
+  const initialLatRef = useRef<number>(initialLat);
+  const initialLngRef = useRef<number>(initialLng);
+  const currentTileSourceRef = useRef<string>("/tiles-map/{z}/{x}/{y}.png");
+  const mapManagerInstanceRef = useRef<MapManagerInstance | null>(null);
 
-  /**
-   * Get current center of the map.
-   */
-  public getCenter(): { lat: number; lng: number } | null {
-    if (!this.mapboxMap) return null;
-    const center = this.mapboxMap.getCenter();
-    return {
-      lat: center.lat,
-      lng: center.lng,
-    };
-  }
+  const updateCityLabels = () => {
+    if (!mapboxMapRef.current || !labelsContainerRef.current) return;
 
-  /**
-   * Get current zoom level of the map.
-   */
-  public getZoom(): number | null {
-    if (!this.mapboxMap) return null;
-    return this.mapboxMap.getZoom();
-  }
+    const zoom = mapboxMapRef.current.getZoom();
+    const minZoom = 8;
 
-  /**
-   * Set zoom level of the map.
-   */
-  public setZoom(zoom: number): void {
-    if (!this.mapboxMap) return;
-    this.mapboxMap.setZoom(zoom);
-  }
+    labelsContainerRef.current.innerHTML = "";
 
-  /**
-   * Get the mapbox map instance (for resize, etc.).
-   */
-  public getMapboxMap(): mapboxgl.Map | null {
-    return this.mapboxMap;
-  }
-
-  /**
-   * Resize the map.
-   */
-  public resize(): void {
-    this.mapboxMap?.resize();
-  }
-
-  /**
-   * Check if map is currently visible.
-   */
-  public isMapVisible(): boolean {
-    if (this.mapElement) {
-      return (
-        this.mapElement.style.visibility !== "hidden" &&
-        this.mapElement.style.opacity !== "0"
-      );
-    }
-    return false;
-  }
-
-  /**
-   * Toggle map visibility.
-   * Uses visibility: hidden instead of display: none to preserve map dimensions
-   * so that node projections continue to work correctly.
-   */
-  public toggleMapVisibility(): boolean {
-    if (this.mapElement) {
-      const isVisible = this.isMapVisible();
-      this.mapElement.style.visibility = isVisible ? "hidden" : "visible";
-      this.mapElement.style.opacity = isVisible ? "0" : "1";
-      // Ensure map can still calculate projections even when hidden
-      if (this.mapboxMap) {
-        // Trigger a resize to ensure map maintains dimensions
-        setTimeout(() => {
-          this.mapboxMap?.resize();
-        }, 0);
-      }
-      return !isVisible;
-    }
-    return false;
-  }
-
-  /**
-   * Add city labels as HTML overlays to the map (offline-compatible).
-   */
-  private addCityLabels(): void {
-    if (!this.mapboxMap || !this.labelsContainer) return;
-    this.updateCityLabels();
-    console.log(`🏙️ Added ${indianCitiesData.length} city labels to map`);
-  }
-
-  /**
-   * Update city labels position and visibility based on zoom level.
-   */
-  private updateCityLabels(): void {
-    if (!this.mapboxMap || !this.labelsContainer) return;
-
-    const zoom = this.mapboxMap.getZoom();
-    const minZoom = 8; // Show labels at zoom 8 and above
-
-    // Clear existing labels
-    this.labelsContainer.innerHTML = "";
-
-    // Only show labels at appropriate zoom level
     if (zoom < minZoom) {
       return;
     }
 
-    // Calculate text size based on zoom
     const baseSize = 10;
     const sizeMultiplier = Math.max(1, (zoom - minZoom) / 2);
     const fontSize = Math.min(14, baseSize * sizeMultiplier);
 
-    // Get map bounds to filter visible cities
-    const bounds = this.mapboxMap.getBounds();
+    const bounds = mapboxMapRef.current.getBounds();
     const visibleCities = indianCitiesData.filter((city) => {
       return (
         city.longitude >= bounds.getWest() &&
@@ -216,9 +52,11 @@ export class MapManager {
       );
     });
 
-    // Create label elements for visible cities
     visibleCities.forEach((city) => {
-      const point = this.mapboxMap!.project([city.longitude, city.latitude]);
+      const point = mapboxMapRef.current!.project([
+        city.longitude,
+        city.latitude,
+      ]);
 
       const label = document.createElement("div");
       label.textContent = city.city;
@@ -242,24 +80,28 @@ export class MapManager {
         z-index: 2;
       `;
 
-      this.labelsContainer!.appendChild(label);
+      labelsContainerRef.current!.appendChild(label);
     });
-  }
+  };
 
-  /**
-   * Initialize the map with a given tile source.
-   * @param tileSource - The tile source URL pattern (e.g., "/tiles-map/{z}/{x}/{y}.png" or "maptiles://{z}/{x}/{y}.png")
-   * @param lat - Initial latitude
-   * @param lng - Initial longitude
-   */
-  private initializeMap(tileSource: string, lat: number, lng: number): void {
-    if (!this.mapElement) {
+  const addCityLabels = () => {
+    if (!mapboxMapRef.current || !labelsContainerRef.current) return;
+    updateCityLabels();
+    console.log(`🏙️ Added ${indianCitiesData.length} city labels to map`);
+  };
+
+  const initializeMap = (tileSource: string, lat: number, lng: number) => {
+    if (!mapElementRef.current) {
       console.error("Cannot initialize map: map element not found");
       return;
     }
 
-    this.mapboxMap = new mapboxgl.Map({
-      container: this.mapElement,
+    // Set Mapbox access token
+    mapboxgl.accessToken =
+      "pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw";
+
+    mapboxMapRef.current = new mapboxgl.Map({
+      container: mapElementRef.current,
       style: {
         version: 8,
         sources: {
@@ -291,140 +133,73 @@ export class MapManager {
       preserveDrawingBuffer: true,
     });
 
-    // Wait for map to load
-    this.mapboxMap.on("load", () => {
+    // Expose mapRef in globalThis
+    if (typeof window !== "undefined") {
+      window.mapRef = mapboxMapRef.current;
+    }
+
+    mapboxMapRef.current.on("load", () => {
       console.log("🗺️ Mapbox GL map loaded successfully");
-      this.addCityLabels();
-      // Resize and repaint immediately
-      this.mapboxMap?.resize();
-      this.mapboxMap?.triggerRepaint();
+      addCityLabels();
+      mapboxMapRef.current?.resize();
+      mapboxMapRef.current?.triggerRepaint();
     });
 
-    // Listen for map move events to update location display and labels
-    this.mapboxMap.on("moveend", () => {
+    mapboxMapRef.current.on("moveend", () => {
       const event = new CustomEvent("map-center-changed");
       window.dispatchEvent(event);
-      this.updateCityLabels();
+      updateCityLabels();
     });
 
-    // Listen for map move events (including during movement)
-    this.mapboxMap.on("move", () => {
+    mapboxMapRef.current.on("move", () => {
       const event = new CustomEvent("map-center-changed");
       window.dispatchEvent(event);
     });
 
-    // Listen for zoom changes to update zoom display and labels
-    this.mapboxMap.on("zoomend", () => {
+    mapboxMapRef.current.on("zoomend", () => {
       const event = new CustomEvent("map-zoom-changed");
       window.dispatchEvent(event);
-      this.updateCityLabels();
-      // Force map re-render on zoom end
-      if (this.mapboxMap) {
-        this.mapboxMap.resize();
-        this.mapboxMap.triggerRepaint();
+      updateCityLabels();
+      if (mapboxMapRef.current) {
+        mapboxMapRef.current.resize();
+        mapboxMapRef.current.triggerRepaint();
       }
     });
 
-    // Listen for zoom changes (including during zoom)
-    this.mapboxMap.on("zoom", () => {
+    mapboxMapRef.current.on("zoom", () => {
       const event = new CustomEvent("map-zoom-changed");
       window.dispatchEvent(event);
-      // Force map re-render during zoom
-      if (this.mapboxMap) {
-        this.mapboxMap.triggerRepaint();
+      if (mapboxMapRef.current) {
+        mapboxMapRef.current.triggerRepaint();
       }
     });
 
-    // Suppress tile loading errors for missing tiles
-    this.mapboxMap.on("error", (e: any) => {
+    mapboxMapRef.current.on("error", (e: any) => {
       if (
         e.error &&
         e.error.message &&
         e.error.message.includes("Could not load image")
       ) {
-        return; // Silently ignore missing tile errors
+        return;
       }
       console.error("🗺️ Mapbox GL map error:", e);
     });
 
-    // Disable all interactions
-    this.mapboxMap.dragPan.disable();
-    this.mapboxMap.scrollZoom.disable();
-    this.mapboxMap.boxZoom.disable();
-    this.mapboxMap.dragRotate.disable();
-    this.mapboxMap.keyboard.disable();
-    this.mapboxMap.doubleClickZoom.disable();
-    this.mapboxMap.touchZoomRotate.disable();
-  }
+    mapboxMapRef.current.dragPan.disable();
+    mapboxMapRef.current.scrollZoom.disable();
+    mapboxMapRef.current.boxZoom.disable();
+    mapboxMapRef.current.dragRotate.disable();
+    mapboxMapRef.current.keyboard.disable();
+    mapboxMapRef.current.doubleClickZoom.disable();
+    mapboxMapRef.current.touchZoomRotate.disable();
+  };
 
-  /**
-   * Update the map source and reinitialize the map.
-   * @param tileSource - The new tile source URL pattern (e.g., "/tiles-map/{z}/{x}/{y}.png" or "maptiles://{z}/{x}/{y}.png")
-   */
-  public updateMapSource(tileSource: string): void {
-    this.currentTileSource = tileSource;
-    if (!this.mapElement) {
-      console.error("Cannot update map source: map element not found");
-      return;
-    }
+  useEffect(() => {
+    if (!container) return;
 
-    // Save current map state before destroying
-    let currentCenter: [number, number] | null = null;
-    let currentZoom: number | null = null;
+    containerRef.current = container;
 
-    if (this.mapboxMap) {
-      const center = this.mapboxMap.getCenter();
-      currentCenter = [center.lng, center.lat];
-      currentZoom = this.mapboxMap.getZoom();
-
-      // Remove all event listeners by removing the map
-      this.mapboxMap.remove();
-      this.mapboxMap = null;
-    }
-
-    // Clear the map container
-    if (this.mapElement) {
-      this.mapElement.innerHTML = "";
-    }
-
-    // Reinitialize map with new source, preserving position if available
-    const lat = currentCenter ? currentCenter[1] : this.initialLat;
-    const lng = currentCenter ? currentCenter[0] : this.initialLng;
-
-    this.initializeMap(tileSource, lat, lng);
-
-    // Restore zoom level if available
-    if (currentZoom !== null && this.mapboxMap) {
-      this.mapboxMap.setZoom(currentZoom);
-    }
-
-    console.log(`🗺️ Map reinitialized with new source: ${tileSource}`);
-  }
-
-  /**
-   * Reinitialize the map in a new container.
-   * This is useful when the container is recreated (e.g., when view mode changes).
-   * @param newContainer - The new container element
-   */
-  public reinitializeInContainer(newContainer: HTMLElement): void {
-    // Save current map state
-    let currentCenter: [number, number] | null = null;
-    let currentZoom: number | null = null;
-
-    if (this.mapboxMap) {
-      const center = this.mapboxMap.getCenter();
-      currentCenter = [center.lng, center.lat];
-      currentZoom = this.mapboxMap.getZoom();
-
-      // Remove the old map
-      this.mapboxMap.remove();
-      this.mapboxMap = null;
-    }
-
-    // Update container reference
-    this.container = newContainer;
-
-    // Recreate map containers in new container
+    // Create map container
     const mapContainer = document.createElement("div");
     mapContainer.id = "map-background";
     mapContainer.style.cssText = `
@@ -444,10 +219,10 @@ export class MapManager {
       -webkit-font-smoothing: antialiased;
     `;
 
-    newContainer.appendChild(mapContainer);
-    this.mapElement = mapContainer;
+    container.appendChild(mapContainer);
+    mapElementRef.current = mapContainer;
 
-    // Recreate labels container
+    // Create container for HTML-based city labels
     const labelsContainer = document.createElement("div");
     labelsContainer.id = "city-labels-container";
     labelsContainer.style.cssText = `
@@ -459,8 +234,8 @@ export class MapManager {
       pointer-events: none;
       z-index: 2;
     `;
-    newContainer.appendChild(labelsContainer);
-    this.labelsContainer = labelsContainer;
+    container.appendChild(labelsContainer);
+    labelsContainerRef.current = labelsContainer;
 
     // Ensure container has minimum dimensions
     if (mapContainer.clientWidth === 0 || mapContainer.clientHeight === 0) {
@@ -470,18 +245,210 @@ export class MapManager {
       mapContainer.style.minHeight = "100px";
     }
 
-    // Reinitialize map with current source, preserving position
-    const lat = currentCenter ? currentCenter[1] : this.initialLat;
-    const lng = currentCenter ? currentCenter[0] : this.initialLng;
+    // Initialize map
+    currentTileSourceRef.current = "/tiles-map/{z}/{x}/{y}.png";
+    initializeMap(
+      currentTileSourceRef.current,
+      initialLatRef.current,
+      initialLngRef.current
+    );
 
-    this.initializeMap(this.currentTileSource, lat, lng);
+    // Create MapManager instance
+    const mapManagerInstance: MapManagerInstance = {
+      updateCenter: (lat: number, lng: number, zoom?: number) => {
+        if (!mapboxMapRef.current) return;
+        const jumpOptions: mapboxgl.CameraOptions = {
+          center: [lng, lat],
+        };
+        if (typeof zoom === "number" && Number.isFinite(zoom)) {
+          jumpOptions.zoom = zoom;
+        }
+        mapboxMapRef.current.jumpTo(jumpOptions);
+      },
+      getCenter: () => {
+        if (!mapboxMapRef.current) return null;
+        const center = mapboxMapRef.current.getCenter();
+        return {
+          lat: center.lat,
+          lng: center.lng,
+        };
+      },
+      getZoom: () => {
+        if (!mapboxMapRef.current) return null;
+        return mapboxMapRef.current.getZoom();
+      },
+      setZoom: (zoom: number) => {
+        if (!mapboxMapRef.current) return;
+        mapboxMapRef.current.setZoom(zoom);
+      },
+      getMapboxMap: () => mapboxMapRef.current,
+      resize: () => {
+        mapboxMapRef.current?.resize();
+      },
+      isMapVisible: () => {
+        if (mapElementRef.current) {
+          return (
+            mapElementRef.current.style.visibility !== "hidden" &&
+            mapElementRef.current.style.opacity !== "0"
+          );
+        }
+        return false;
+      },
+      toggleMapVisibility: () => {
+        if (mapElementRef.current) {
+          const isVisible =
+            mapManagerInstanceRef.current?.isMapVisible() || false;
+          mapElementRef.current.style.visibility = isVisible
+            ? "hidden"
+            : "visible";
+          mapElementRef.current.style.opacity = isVisible ? "0" : "1";
+          if (mapboxMapRef.current) {
+            setTimeout(() => {
+              mapboxMapRef.current?.resize();
+            }, 0);
+          }
+          return !isVisible;
+        }
+        return false;
+      },
+      updateMapSource: (tileSource: string) => {
+        currentTileSourceRef.current = tileSource;
+        if (!mapElementRef.current) {
+          console.error("Cannot update map source: map element not found");
+          return;
+        }
 
-    // Restore zoom level if available
-    if (currentZoom !== null && this.mapboxMap) {
-      this.mapboxMap.setZoom(currentZoom);
+        let currentCenter: [number, number] | null = null;
+        let currentZoom: number | null = null;
+
+        if (mapboxMapRef.current) {
+          const center = mapboxMapRef.current.getCenter();
+          currentCenter = [center.lng, center.lat];
+          currentZoom = mapboxMapRef.current.getZoom();
+          mapboxMapRef.current.remove();
+          mapboxMapRef.current = null;
+        }
+
+        if (mapElementRef.current) {
+          mapElementRef.current.innerHTML = "";
+        }
+
+        const lat = currentCenter ? currentCenter[1] : initialLatRef.current;
+        const lng = currentCenter ? currentCenter[0] : initialLngRef.current;
+
+        initializeMap(tileSource, lat, lng);
+
+        if (currentZoom !== null && mapboxMapRef.current) {
+          mapboxMapRef.current.setZoom(currentZoom);
+        }
+
+        console.log(`🗺️ Map reinitialized with new source: ${tileSource}`);
+      },
+      reinitializeInContainer: (newContainer: HTMLElement) => {
+        let currentCenter: [number, number] | null = null;
+        let currentZoom: number | null = null;
+
+        if (mapboxMapRef.current) {
+          const center = mapboxMapRef.current.getCenter();
+          currentCenter = [center.lng, center.lat];
+          currentZoom = mapboxMapRef.current.getZoom();
+          mapboxMapRef.current.remove();
+          mapboxMapRef.current = null;
+        }
+
+        containerRef.current = newContainer;
+
+        const mapContainer = document.createElement("div");
+        mapContainer.id = "map-background";
+        mapContainer.style.cssText = `
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          z-index: 0;
+          opacity: 1;
+          pointer-events: none;
+          display: block;
+          visibility: visible;
+          transform: translateZ(0);
+          will-change: transform;
+          backface-visibility: hidden;
+          -webkit-font-smoothing: antialiased;
+        `;
+
+        newContainer.appendChild(mapContainer);
+        mapElementRef.current = mapContainer;
+
+        const labelsContainer = document.createElement("div");
+        labelsContainer.id = "city-labels-container";
+        labelsContainer.style.cssText = `
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+          z-index: 2;
+        `;
+        newContainer.appendChild(labelsContainer);
+        labelsContainerRef.current = labelsContainer;
+
+        if (mapContainer.clientWidth === 0 || mapContainer.clientHeight === 0) {
+          mapContainer.style.width = "100%";
+          mapContainer.style.height = "100%";
+          mapContainer.style.minWidth = "100px";
+          mapContainer.style.minHeight = "100px";
+        }
+
+        const lat = currentCenter ? currentCenter[1] : initialLatRef.current;
+        const lng = currentCenter ? currentCenter[0] : initialLngRef.current;
+
+        initializeMap(currentTileSourceRef.current, lat, lng);
+
+        if (currentZoom !== null && mapboxMapRef.current) {
+          mapboxMapRef.current.setZoom(currentZoom);
+        }
+
+        console.log(`🗺️ Map reinitialized in new container`);
+      },
+    };
+
+    mapManagerInstanceRef.current = mapManagerInstance;
+
+    // Store in globalThis
+    if (typeof window !== "undefined") {
+      window.mapManager = mapManagerInstance;
+      window.mapRef = mapboxMapRef.current;
     }
 
-    console.log(`🗺️ Map reinitialized in new container`);
-  }
-}
+    // Notify parent
+    if (onMapReady) {
+      onMapReady(mapManagerInstance);
+    }
 
+    return () => {
+      if (mapboxMapRef.current) {
+        mapboxMapRef.current.remove();
+        mapboxMapRef.current = null;
+      }
+      if (mapElementRef.current && mapElementRef.current.parentNode) {
+        mapElementRef.current.parentNode.removeChild(mapElementRef.current);
+      }
+      if (labelsContainerRef.current && labelsContainerRef.current.parentNode) {
+        labelsContainerRef.current.parentNode.removeChild(
+          labelsContainerRef.current
+        );
+      }
+      // Clean up globalThis
+      if (typeof window !== "undefined") {
+        window.mapManager = null;
+        window.mapRef = null;
+      }
+    };
+  }, [container, onMapReady]);
+
+  return null; // This component doesn't render anything directly
+};
+
+export default Map;

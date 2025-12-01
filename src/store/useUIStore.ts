@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { useAircraftStore } from "./useAircraftStore";
-
-interface UIStore {
+import { UIStore } from "../lib/types";
   zoomLevel: number;
   showOtherNodes: boolean;
   centerMode: "mother" | "self";

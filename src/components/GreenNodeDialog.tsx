@@ -1,12 +1,6 @@
 import React, { useEffect, useRef } from "react";
-import { UDPDataPoint } from "./UDPNodesManager";
 import { useUDPStore } from "../store/useUDPStore";
-
-interface GreenNodeDialogProps {
-  node: UDPDataPoint;
-  position: { x: number; y: number };
-  onClose: () => void;
-}
+import { GreenNodeDialogProps } from "../lib/types";
 
 const GreenNodeDialog: React.FC<GreenNodeDialogProps> = ({
   node,

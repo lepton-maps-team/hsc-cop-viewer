@@ -1,10 +1,5 @@
 import React from "react";
-
-interface RadarCircleProps {
-  rangeNM: number;
-  radius: number;
-  minDimension: number;
-}
+import { RadarCircleProps } from "../lib/types";
 
 const RadarCircle: React.FC<RadarCircleProps> = ({
   rangeNM,

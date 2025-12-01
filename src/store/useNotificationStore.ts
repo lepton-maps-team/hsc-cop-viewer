@@ -1,12 +1,8 @@
 import { create } from "zustand";
+import { NotificationState, NotificationStore } from "../lib/types";
 
-export interface NotificationState {
-  message: string;
-  subMessage: string;
-  type: "lock" | "execute";
-}
-
-interface NotificationStore {
+// Re-export for backward compatibility
+export type { NotificationState };
   notification: NotificationState | null;
   setNotification: (notification: NotificationState | null) => void;
 }

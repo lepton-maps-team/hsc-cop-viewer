@@ -2,21 +2,10 @@ import React, { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import { useUDPStore } from "../store/useUDPStore";
 import { useMapStore } from "../store/useMapStore";
+import { GeoMessageData } from "../lib/types";
 
-export type GeoMessageData = {
-  globalId: number;
-  messageId: number;
-  senderGid: number;
-  latitude: number;
-  longitude: number;
-  altitude: number;
-  missionId: number;
-  source: number;
-  geoType: number;
-  action: number;
-  nodeId: number;
-  opcode: 122;
-};
+// Re-export for backward compatibility
+export type { GeoMessageData };
 
 const GeoMessageManager: React.FC = () => {
   const { geoMessages } = useUDPStore();

@@ -3,17 +3,10 @@ import { useAircraftStore } from "../store/useAircraftStore";
 import { useUIStore } from "../store/useUIStore";
 import { useThreatStore } from "../store/useThreatStore";
 import { getNearestThreats } from "../lib/utils";
-import { Aircraft } from "../types";
+import { ThreatWithDistance, ThreatDialogProps } from "../lib/types";
 
-export type ThreatWithDistance = {
-  aircraft: Aircraft;
-  distance: number;
-  distanceNM: number;
-};
-
-interface ThreatDialogProps {
-  isVisible: boolean;
-}
+// Re-export for backward compatibility
+export type { ThreatWithDistance };
 
 const ThreatDialog: React.FC<ThreatDialogProps> = ({ isVisible }) => {
   const { aircraft, nodeId } = useAircraftStore();

@@ -1,4 +1,4 @@
-import { Aircraft } from "../types";
+import { Aircraft } from "./types";
 
 export const calculateDistance = (
   lat1: number,

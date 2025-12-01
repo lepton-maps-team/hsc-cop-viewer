@@ -1,13 +1,5 @@
 import React from "react";
-import { UDPDataPoint } from "./UDPNodesManager";
-
-interface UDPNodeMarkerProps {
-  node: UDPDataPoint;
-  position: { x: number; y: number };
-  isLocked: boolean;
-  isThreatLocked: boolean;
-  onClick: () => void;
-}
+import { UDPNodeMarkerProps } from "../lib/types";
 
 const UDPNodeMarker: React.FC<UDPNodeMarkerProps> = ({
   node,

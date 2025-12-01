@@ -4,16 +4,10 @@ import { useUDPStore } from "../store/useUDPStore";
 import { useMapStore } from "../store/useMapStore";
 import { useNotificationStore } from "../store/useNotificationStore";
 import { calculateDistance } from "../lib/utils";
+import { UDPDataPoint, UDPNodesManagerProps } from "../lib/types";
 
-// Type for UDP data points
-export type UDPDataPoint = {
-  globalId: number;
-  latitude: number;
-  longitude: number;
-  altitude: number;
-  opcode?: number; // Track which opcode this came from (101 or 104)
-  [key: string]: any; // For other fields like veIn, veIe, heading, groundSpeed, etc.
-};
+// Re-export for backward compatibility
+export type { UDPDataPoint, UDPNodesManagerProps };
 
 // Helper functions exported for use elsewhere
 export const calculateNodesCenter = (
@@ -58,10 +52,6 @@ export const getNetworkMembers = (
       point.battleGroupData !== undefined
   );
 };
-
-interface UDPNodesManagerProps {
-  visualizationArea: HTMLElement | null;
-}
 
 const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
   visualizationArea,

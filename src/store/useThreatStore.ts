@@ -1,9 +1,7 @@
 import { create } from "zustand";
-import { Aircraft } from "../types";
+import { Aircraft, ThreatStore } from "../lib/types";
 import { useAircraftStore } from "./useAircraftStore";
 import { useNotificationStore } from "./useNotificationStore";
-
-interface ThreatStore {
   lockThreat: (aircraft: Aircraft) => void;
   executeThreat: (aircraft: Aircraft) => void;
 }

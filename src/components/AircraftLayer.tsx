@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import { useAircraftStore } from "../store/useAircraftStore";
 import { useUIStore } from "../store/useUIStore";
 import { useMapStore } from "../store/useMapStore";
-import { Aircraft } from "../types";
+import { Aircraft } from "../lib/types";
 import AircraftMarker from "./AircraftMarker";
 
 const AircraftLayer: React.FC = () => {

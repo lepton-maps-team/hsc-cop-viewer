@@ -1,13 +1,7 @@
 import React, { useEffect, useRef } from "react";
-import { UDPDataPoint } from "./UDPNodesManager";
 import { useUDPStore } from "../store/useUDPStore";
 import { useNotificationStore } from "../store/useNotificationStore";
-
-interface RedNodeDialogProps {
-  node: UDPDataPoint;
-  position: { x: number; y: number };
-  onClose: () => void;
-}
+import { RedNodeDialogProps } from "../lib/types";
 
 const RedNodeDialog: React.FC<RedNodeDialogProps> = ({
   node,

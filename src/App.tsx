@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useMemo } from "react";
-import MapManager from "./components/MapManager";
+import Map from "./map";
 import ThreatDialog from "./components/ThreatDialog";
 import RightSidebar from "./components/RightSidebar";
 import DebugInfo from "./components/DebugInfo";
@@ -155,7 +155,7 @@ const App: React.FC = () => {
       >
         {visualizationAreaRef.current && (
           <>
-            <MapManager
+            <Map
               container={visualizationAreaRef.current}
               initialLat={20.5937}
               initialLng={78.9629}

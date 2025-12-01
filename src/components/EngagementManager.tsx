@@ -1,33 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
-import { UDPDataPoint } from "./UDPNodesManager";
 import mapboxgl from "mapbox-gl";
 import { useUDPStore } from "../store/useUDPStore";
 import { useMapStore } from "../store/useMapStore";
+import { UDPDataPoint, EngagementData, EngagementLine } from "../lib/types";
 
-export type EngagementData = {
-  globalId: number; // attacker
-  engagementTargetGid: number; // target
-  weaponLaunch: number;
-  hangFire: number;
-  tth: number; // time to hit
-  tta: number; // time to arrival
-  engagementTargetWeaponCode: number;
-  dMax1: number; // max range 1
-  dMax2: number; // max range 2
-  dmin: number; // min range
-  opcode: 103;
-};
-
-interface EngagementLine {
-  id: string;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  engagement: EngagementData;
-  attacker: UDPDataPoint;
-  target: UDPDataPoint;
-}
+// Re-export for backward compatibility
+export type { EngagementData };
 
 const EngagementManager: React.FC = () => {
   const { engagements, udpDataPoints } = useUDPStore();

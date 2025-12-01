@@ -1,14 +1,6 @@
 import React from "react";
 import { calculateDistance } from "../lib/utils";
-import { UDPDataPoint } from "./UDPNodesManager";
-
-interface ConnectionLineProps {
-  node1: UDPDataPoint;
-  node2: UDPDataPoint;
-  point1: { x: number; y: number };
-  point2: { x: number; y: number };
-  color: string;
-}
+import { ConnectionLineProps } from "../lib/types";
 
 const ConnectionLine: React.FC<ConnectionLineProps> = ({
   node1,

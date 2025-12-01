@@ -1,14 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { MapManager } from "../map";
-
-interface UseMapManagerProps {
-  containerRef: React.RefObject<HTMLDivElement>;
-  defaultLat?: number;
-  defaultLng?: number;
-  onNodesCenterCalculated?: (
-    center: { lat: number; lng: number } | null
-  ) => void;
-}
+import { UseMapManagerProps } from "../lib/types";
 
 export const useMapManager = ({
   containerRef,

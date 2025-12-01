@@ -1,15 +1,9 @@
 import { create } from "zustand";
-import { MapManagerInstance } from "../components/MapManager";
+import { MapManagerInstance, MapStore } from "../lib/types";
 import { convertToCartesian } from "../lib/utils";
 
-// Store mapManager in globalThis
-declare global {
-  interface Window {
-    mapManager: MapManagerInstance | null;
-  }
-}
-
-interface MapStore {
+// Store mapManager in globalThis (already declared in map.tsx)
+// No need to redeclare here since it's already in map.tsx
   convertToCartesian: (
     deltaLat: number,
     deltaLng: number,

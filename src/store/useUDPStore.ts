@@ -1,10 +1,11 @@
 import { create } from "zustand";
-import { UDPDataPoint } from "../components/UDPNodesManager";
-import { EngagementData } from "../components/EngagementManager";
-import { GeoMessageData } from "../components/GeoMessageManager";
+import {
+  UDPDataPoint,
+  EngagementData,
+  GeoMessageData,
+  UDPStore,
+} from "../lib/types";
 import { useNotificationStore } from "./useNotificationStore";
-
-interface UDPStore {
   networkMembers: UDPDataPoint[];
   engagements: EngagementData[];
   geoMessages: GeoMessageData[];

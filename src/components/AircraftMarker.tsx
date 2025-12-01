@@ -1,12 +1,6 @@
 import React, { useState } from "react";
-import { Aircraft, AircraftType } from "../types";
+import { Aircraft, AircraftType, AircraftMarkerProps } from "../lib/types";
 import { useAircraftStore } from "../store/useAircraftStore";
-
-interface AircraftMarkerProps {
-  aircraft: Aircraft;
-  isCenter: boolean;
-  position?: { x: number; y: number };
-}
 
 const AircraftMarker: React.FC<AircraftMarkerProps> = ({
   aircraft,

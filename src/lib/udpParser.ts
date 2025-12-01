@@ -29,9 +29,7 @@ import {
   ALTITUDE_RESOLUTION_122,
 } from "./config";
 
-type ReadBitsFn = (start: number, len: number) => number;
-type ReadI16Fn = (start: number) => number;
-type ReadU32Fn = (start: number) => number;
+import { ReadBitsFn, ReadI16Fn, ReadU32Fn } from "./types";
 
 export function parseOpcode101(
   readBits: ReadBitsFn,

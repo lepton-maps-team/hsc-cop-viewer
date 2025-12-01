@@ -1,7 +1,5 @@
 import { create } from "zustand";
-import { Aircraft } from "../types";
-
-interface AircraftStore {
+import { Aircraft, AircraftStore } from "../lib/types";
   aircraft: Map<string, Aircraft>;
   nodeId: string;
   selectedAircraft: Aircraft | null;
