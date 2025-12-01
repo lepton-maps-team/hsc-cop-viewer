@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useMemo } from "react";
 import { useAircraftStore } from "../store/useAircraftStore";
-import { useUIStore } from "../store/useUIStore";
 import { useMapStore } from "../store/useMapStore";
+import { convertToCartesian } from "../lib/utils";
+import { Aircraft } from "../lib/types";
 
 const AdaptiveRadarCircles: React.FC = () => {
   const { aircraft, nodeId } = useAircraftStore();
-  const { zoomLevel, centerMode } = useUIStore();
-  const { convertToCartesian } = useMapStore();
+  const { zoomLevel, centerMode } = useMapStore();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const centerAircraft = useMemo(() => {
@@ -14,7 +14,7 @@ const AdaptiveRadarCircles: React.FC = () => {
     const aircraftArray = Array.from(aircraft.values());
     if (centerMode === "mother") {
       return (
-        aircraftArray.find((a) => a.aircraftType === "mother") ||
+        aircraftArray.find((a: Aircraft) => a.aircraftType === "mother") ||
         aircraftArray[0]
       );
     }
@@ -28,7 +28,7 @@ const AdaptiveRadarCircles: React.FC = () => {
     containerRef.current.innerHTML = "";
 
     let maxDistance = 0;
-    aircraft.forEach((ac, id) => {
+    aircraft.forEach((ac: Aircraft, id: string) => {
       if (id === centerAircraft.id) return;
 
       const relativeLat = ac.lat - centerAircraft.lat;

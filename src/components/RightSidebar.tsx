@@ -1,5 +1,4 @@
 import React from "react";
-import { useUIStore } from "../store/useUIStore";
 import { useMapStore } from "../store/useMapStore";
 
 const RightSidebar: React.FC = () => {
@@ -14,39 +13,36 @@ const RightSidebar: React.FC = () => {
     toggleShowThreatDialog,
     zoomIn: storeZoomIn,
     zoomOut: storeZoomOut,
-  } = useUIStore();
-  const { toggleMapVisibility, getMapManager } = useMapStore();
+  } = useMapStore();
 
-  const mapManager = getMapManager();
-  const isMapVisible = mapManager?.getMapboxMap() ? true : false;
+  const mapManager = typeof window !== "undefined" ? window.mapManager : null;
+  const isMapVisible = window.mapRef ? true : false;
 
   const zoomIn = () => {
-    const currentZoom = useUIStore.getState().zoomLevel;
+    const currentZoom = useMapStore.getState().zoomLevel;
     const newZoom = Math.min(currentZoom + 1, 13);
     storeZoomIn();
-    const mapMgr = getMapManager();
-    if (mapMgr) {
-      const center = mapMgr.getCenter();
+    if (mapManager) {
+      const center = mapManager.getCenter();
       if (center) {
-        mapMgr.updateCenter(center.lat, center.lng, newZoom);
+        mapManager.updateCenter(center.lat, center.lng, newZoom);
       } else {
-        mapMgr.setZoom(newZoom);
+        mapManager.setZoom(newZoom);
       }
     }
   };
 
   const zoomOut = () => {
-    const currentZoom = useUIStore.getState().zoomLevel;
+    const currentZoom = useMapStore.getState().zoomLevel;
     if (currentZoom <= 1) return;
     const newZoom = Math.max(currentZoom - 1, 1);
     storeZoomOut();
-    const mapMgr = getMapManager();
-    if (mapMgr) {
-      const center = mapMgr.getCenter();
+    if (mapManager) {
+      const center = mapManager.getCenter();
       if (center) {
-        mapMgr.updateCenter(center.lat, center.lng, newZoom);
+        mapManager.updateCenter(center.lat, center.lng, newZoom);
       } else {
-        mapMgr.setZoom(newZoom);
+        mapManager.setZoom(newZoom);
       }
     }
   };
@@ -190,7 +186,11 @@ const RightSidebar: React.FC = () => {
       </button>
 
       <button
-        onClick={toggleMapVisibility}
+        onClick={() => {
+          if (mapManager) {
+            mapManager.toggleMapVisibility();
+          }
+        }}
         style={{
           ...buttonStyle,
           background: isMapVisible ? "#4488ff" : "rgba(60, 60, 70, 0.9)",

@@ -20,19 +20,17 @@ import GeoMessageManager, {
   GeoMessageData,
 } from "./components/GeoMessageManager";
 import { useAircraftStore } from "./store/useAircraftStore";
-import { useUIStore } from "./store/useUIStore";
 import { useNotificationStore } from "./store/useNotificationStore";
 import { useUDPStore } from "./store/useUDPStore";
 import { useMapStore } from "./store/useMapStore";
 
 const App: React.FC = () => {
   const { aircraft, nodeId } = useAircraftStore();
-  const { centerMode, showThreatDialog, setZoomLevel } = useUIStore();
+  const { centerMode, showThreatDialog, setZoomLevel } = useMapStore();
   const { selectedAircraft } = useAircraftStore();
   const { notification } = useNotificationStore();
   const { setNetworkMembers, setEngagements, setGeoMessages, processUDPData } =
     useUDPStore();
-  const { getMapManager } = useMapStore();
 
   const visualizationAreaRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -74,9 +72,8 @@ const App: React.FC = () => {
 
     // Handle window resize
     const handleResize = () => {
-      const mapManager = getMapManager();
-      if (mapManager) {
-        mapManager.resize();
+      if (window.mapManager) {
+        window.mapManager.resize();
       }
     };
     window.addEventListener("resize", handleResize);
@@ -89,8 +86,7 @@ const App: React.FC = () => {
 
     // Listen for map zoom changes
     const handleMapZoomChanged = () => {
-      const mapManager = getMapManager();
-      const currentZoom = mapManager?.getZoom();
+      const currentZoom = window.mapManager?.getZoom();
       if (typeof currentZoom === "number" && Number.isFinite(currentZoom)) {
         setZoomLevel(currentZoom);
       }

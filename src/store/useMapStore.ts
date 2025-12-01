@@ -1,29 +1,49 @@
 import { create } from "zustand";
-import { MapManagerInstance, MapStore } from "../lib/types";
-import { convertToCartesian } from "../lib/utils";
+import { MapStore } from "../lib/types";
+import { useAircraftStore } from "./useAircraftStore";
 
-// Store mapManager in globalThis (already declared in map.tsx)
-// No need to redeclare here since it's already in map.tsx
-  convertToCartesian: (
-    deltaLat: number,
-    deltaLng: number,
-    zoom: number
-  ) => { x: number; y: number };
-  getMapManager: () => MapManagerInstance | null;
-  toggleMapVisibility: () => void;
-}
-
-export const useMapStore = create<MapStore>(() => ({
-  convertToCartesian: (deltaLat, deltaLng, zoom) => {
-    return convertToCartesian(deltaLat, deltaLng, zoom);
+export const useMapStore = create<MapStore>((set, get) => ({
+  // UI state
+  zoomLevel: 5,
+  showOtherNodes: true,
+  centerMode: "mother",
+  viewMode: "normal",
+  showThreatDialog: true,
+  setZoomLevel: (level) => set({ zoomLevel: level }),
+  setShowOtherNodes: (show) => set({ showOtherNodes: show }),
+  setCenterMode: (mode) => set({ centerMode: mode }),
+  setViewMode: (mode) => set({ viewMode: mode }),
+  setShowThreatDialog: (show) => set({ showThreatDialog: show }),
+  zoomIn: () => {
+    const currentZoom = get().zoomLevel;
+    const newZoom = Math.min(currentZoom + 1, 13);
+    set({ zoomLevel: newZoom });
   },
-  getMapManager: () => {
-    return typeof window !== "undefined" ? window.mapManager : null;
+  zoomOut: () => {
+    const currentZoom = get().zoomLevel;
+    if (currentZoom <= 1) return;
+    const newZoom = Math.max(currentZoom - 1, 1);
+    set({ zoomLevel: newZoom });
   },
-  toggleMapVisibility: () => {
-    const mapManager = typeof window !== "undefined" ? window.mapManager : null;
-    if (mapManager) {
-      mapManager.toggleMapVisibility();
+  toggleCenterMode: () => {
+    const { centerMode } = get();
+    const { aircraft, nodeId } = useAircraftStore.getState();
+    const newMode = centerMode === "mother" ? "self" : "mother";
+    if (newMode === "self") {
+      const selfAircraft = aircraft.get(nodeId);
+      if (!selfAircraft) {
+        console.warn(
+          "⚠️ Cannot switch to self-centered mode: self aircraft not found"
+        );
+        return;
+      }
     }
+    set({ centerMode: newMode });
+  },
+  toggleShowOtherNodes: () => {
+    set({ showOtherNodes: !get().showOtherNodes });
+  },
+  toggleShowThreatDialog: () => {
+    set({ showThreatDialog: !get().showThreatDialog });
   },
 }));

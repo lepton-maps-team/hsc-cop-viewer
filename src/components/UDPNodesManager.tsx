@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
 import { useUDPStore } from "../store/useUDPStore";
-import { useMapStore } from "../store/useMapStore";
 import { useNotificationStore } from "../store/useNotificationStore";
 import { calculateDistance } from "../lib/utils";
 import { UDPDataPoint, UDPNodesManagerProps } from "../lib/types";
@@ -67,7 +66,6 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
     setDialogOpenForNodeId,
     addLockedNodeId,
   } = useUDPStore();
-  const { getMapManager } = useMapStore();
   const { setNotification } = useNotificationStore();
 
   // Refs for DOM containers
@@ -174,8 +172,7 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
   // Calculate zoom to fit nodes
   const calculateZoomToFitNodes = useCallback(
     (centerNode?: UDPDataPoint): number => {
-      const mapManager = getMapManager();
-      const mapboxMap = mapManager?.getMapboxMap();
+      const mapboxMap = window.mapRef;
       if (!mapboxMap) return 15;
 
       const allNodes = Array.from(udpDataPoints.values());
@@ -226,13 +223,12 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
 
       return 15;
     },
-    [udpDataPoints, getMapManager]
+    [udpDataPoints]
   );
 
   // Center map on nodes
   const centerMapOnNodes = useCallback(() => {
-    const mapManager = getMapManager();
-    if (!mapManager) return;
+    if (!window.mapManager) return;
 
     const allNodes = Array.from(udpDataPoints.values());
     if (allNodes.length === 0) return;
@@ -243,19 +239,19 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
     );
 
     if (motherAircraft) {
-      const mapboxMap = mapManager.getMapboxMap();
+      const mapboxMap = window.mapRef;
       const currentZoom = mapboxMap ? mapboxMap.getZoom() : null;
 
       if (!hasInitialCentering && currentZoom === null) {
         const targetZoom = calculateZoomToFitNodes(motherAircraft);
-        mapManager.updateCenter(
+        window.mapManager?.updateCenter(
           motherAircraft.latitude,
           motherAircraft.longitude,
           targetZoom
         );
         setHasInitialCentering(true);
       } else {
-        mapManager.updateCenter(
+        window.mapManager?.updateCenter(
           motherAircraft.latitude,
           motherAircraft.longitude,
           currentZoom || undefined
@@ -265,7 +261,7 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
     }
 
     const centerGreenNode = getCenterGreenNode();
-    const mapboxMap = mapManager.getMapboxMap();
+    const mapboxMap = window.mapRef;
     const currentZoom = mapboxMap ? mapboxMap.getZoom() : null;
 
     if (!centerGreenNode) {
@@ -274,10 +270,14 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
 
       if (!hasInitialCentering && currentZoom === null) {
         const targetZoom = calculateZoomToFitNodes();
-        mapManager.updateCenter(nodesCenter.lat, nodesCenter.lng, targetZoom);
+        window.mapManager?.updateCenter(
+          nodesCenter.lat,
+          nodesCenter.lng,
+          targetZoom
+        );
         setHasInitialCentering(true);
       } else {
-        mapManager.updateCenter(
+        window.mapManager?.updateCenter(
           nodesCenter.lat,
           nodesCenter.lng,
           currentZoom || undefined
@@ -288,14 +288,14 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
 
     if (!hasInitialCentering && currentZoom === null) {
       const targetZoom = calculateZoomToFitNodes(centerGreenNode);
-      mapManager.updateCenter(
+      window.mapManager?.updateCenter(
         centerGreenNode.latitude,
         centerGreenNode.longitude,
         targetZoom
       );
       setHasInitialCentering(true);
     } else {
-      mapManager.updateCenter(
+      window.mapManager?.updateCenter(
         centerGreenNode.latitude,
         centerGreenNode.longitude,
         currentZoom || undefined
@@ -304,7 +304,6 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
   }, [
     udpDataPoints,
     hasInitialCentering,
-    getMapManager,
     calculateZoomToFitNodes,
     getCenterGreenNode,
     setHasInitialCentering,
@@ -312,10 +311,9 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
 
   // Update UDP dots on the map
   const updateUDPDots = useCallback(() => {
-    const mapManager = getMapManager();
-    if (!mapManager || !udpDotsContainerRef.current) return;
+    if (!window.mapRef || !udpDotsContainerRef.current) return;
 
-    const mapboxMap = mapManager.getMapboxMap();
+    const mapboxMap = window.mapRef;
     if (!mapboxMap) return;
 
     try {
@@ -491,16 +489,14 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
     lockedNodeIds,
     threatLockStatus,
     dialogOpenForNodeId,
-    getMapManager,
     setDialogOpenForNodeId,
   ]);
 
   // Update connection lines
   const updateConnectionLines = useCallback(() => {
-    const mapManager = getMapManager();
-    if (!mapManager || !connectionLinesContainerRef.current) return;
+    if (!window.mapRef || !connectionLinesContainerRef.current) return;
 
-    const mapboxMap = mapManager.getMapboxMap();
+    const mapboxMap = window.mapRef;
     if (!mapboxMap) return;
 
     try {
@@ -721,7 +717,7 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
         });
       });
     }
-  }, [udpDataPoints, getMapManager]);
+  }, [udpDataPoints]);
 
   // Update radar circles
   const updateRadarCircles = useCallback(() => {
@@ -839,8 +835,7 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
       const baseRadius =
         ((i + 1) * (minDimension * 0.35 * rangeRatio)) / numCircles;
 
-      const mapManager = getMapManager();
-      const zoomLevel = mapManager?.getZoom() || 15;
+      const zoomLevel = window.mapManager?.getZoom() || 15;
       const radius = baseRadius / zoomLevel;
 
       const minRadius = 30;
@@ -884,7 +879,7 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
         radarCirclesContainerRef.current.appendChild(rangeLabel);
       }
     }
-  }, [udpDataPoints, getCenterGreenNode, getMapManager]);
+  }, [udpDataPoints, getCenterGreenNode]);
 
   // Update when UDP data points change
   useEffect(() => {

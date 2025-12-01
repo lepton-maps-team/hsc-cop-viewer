@@ -9,8 +9,7 @@ export type { EngagementData };
 
 const EngagementManager: React.FC = () => {
   const { engagements, udpDataPoints } = useUDPStore();
-  const { getMapManager } = useMapStore();
-  const mapManager = getMapManager();
+  const mapManager = typeof window !== "undefined" ? window.mapManager : null;
   const linesContainerRef = useRef<HTMLDivElement | null>(null);
   const [engagementLines, setEngagementLines] = useState<EngagementLine[]>([]);
   const [hoveredLineId, setHoveredLineId] = useState<string | null>(null);

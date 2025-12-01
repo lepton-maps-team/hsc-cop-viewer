@@ -9,8 +9,7 @@ export type { GeoMessageData };
 
 const GeoMessageManager: React.FC = () => {
   const { geoMessages } = useUDPStore();
-  const { getMapManager } = useMapStore();
-  const mapManager = getMapManager();
+  const mapManager = typeof window !== "undefined" ? window.mapManager : null;
   const markersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
   const popupsRef = useRef<Map<number, mapboxgl.Popup>>(new Map());
 
@@ -156,7 +155,7 @@ const GeoMessageManager: React.FC = () => {
     popupsRef.current.clear();
 
     // Create markers for each message
-    geoMessages.forEach((message) => {
+    geoMessages.forEach((message: GeoMessageData) => {
       if (
         message.messageId === undefined ||
         message.latitude === undefined ||

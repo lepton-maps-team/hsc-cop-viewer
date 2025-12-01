@@ -1,14 +1,13 @@
 import React, { useMemo } from "react";
 import { useAircraftStore } from "../store/useAircraftStore";
-import { useUIStore } from "../store/useUIStore";
 import { useMapStore } from "../store/useMapStore";
+import { convertToCartesian } from "../lib/utils";
 import { Aircraft } from "../lib/types";
 import AircraftMarker from "./AircraftMarker";
 
 const AircraftLayer: React.FC = () => {
   const { aircraft, nodeId } = useAircraftStore();
-  const { viewMode, zoomLevel, centerMode } = useUIStore();
-  const { convertToCartesian } = useMapStore();
+  const { viewMode, zoomLevel, centerMode } = useMapStore();
 
   const centerAircraft = useMemo(() => {
     if (aircraft.size === 0) return null;
@@ -37,7 +36,7 @@ const AircraftLayer: React.FC = () => {
   });
 
   // Add other aircraft
-  aircraft.forEach((aircraftItem, id) => {
+  aircraft.forEach((aircraftItem: Aircraft, id: string) => {
     if (id === centerAircraft.id) return;
     if (viewMode === "self-only" && aircraftItem.aircraftType !== "self")
       return;

@@ -1,9 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
-import { indianCitiesData } from "./text-layers";
+import { indianCitiesData } from "./lib/text-layers";
 import { MapManagerInstance, MapProps } from "./lib/types";
 
-// Store mapManager in globalThis
 declare global {
   interface Window {
     mapManager: MapManagerInstance | null;
@@ -17,22 +16,20 @@ const Map: React.FC<MapProps> = ({
   initialLng,
   onMapReady,
 }) => {
-  const mapboxMapRef = useRef<mapboxgl.Map | null>(null);
   const mapElementRef = useRef<HTMLDivElement | null>(null);
-  const labelsContainerRef = useRef<HTMLDivElement | null>(null);
-  const containerRef = useRef<HTMLElement | null>(null);
-  const initialLatRef = useRef<number>(initialLat);
-  const initialLngRef = useRef<number>(initialLng);
-  const currentTileSourceRef = useRef<string>("/tiles-map/{z}/{x}/{y}.png");
-  const mapManagerInstanceRef = useRef<MapManagerInstance | null>(null);
 
   const updateCityLabels = () => {
-    if (!mapboxMapRef.current || !labelsContainerRef.current) return;
+    const mapboxMap = window.mapRef;
+    if (!mapboxMap) return;
 
-    const zoom = mapboxMapRef.current.getZoom();
+    const zoom = mapboxMap.getZoom();
     const minZoom = 8;
 
-    labelsContainerRef.current.innerHTML = "";
+    // Remove all existing markers from the map
+    const markers = mapboxMap
+      .getContainer()
+      .querySelectorAll(".mapboxgl-marker");
+    markers.forEach((marker) => marker.remove());
 
     if (zoom < minZoom) {
       return;
@@ -42,7 +39,7 @@ const Map: React.FC<MapProps> = ({
     const sizeMultiplier = Math.max(1, (zoom - minZoom) / 2);
     const fontSize = Math.min(14, baseSize * sizeMultiplier);
 
-    const bounds = mapboxMapRef.current.getBounds();
+    const bounds = mapboxMap.getBounds();
     const visibleCities = indianCitiesData.filter((city) => {
       return (
         city.longitude >= bounds.getWest() &&
@@ -53,17 +50,9 @@ const Map: React.FC<MapProps> = ({
     });
 
     visibleCities.forEach((city) => {
-      const point = mapboxMapRef.current!.project([
-        city.longitude,
-        city.latitude,
-      ]);
-
-      const label = document.createElement("div");
-      label.textContent = city.city;
-      label.style.cssText = `
-        position: absolute;
-        left: ${point.x}px;
-        top: ${point.y}px;
+      const el = document.createElement("div");
+      el.textContent = city.city;
+      el.style.cssText = `
         color: #ffffff;
         font-family: Arial, sans-serif;
         font-size: ${fontSize}px;
@@ -76,18 +65,21 @@ const Map: React.FC<MapProps> = ({
           0 0 2px #000000;
         white-space: nowrap;
         pointer-events: none;
-        transform: translate(-50%, 0);
-        z-index: 2;
       `;
 
-      labelsContainerRef.current!.appendChild(label);
+      new mapboxgl.Marker({
+        element: el,
+        anchor: "left",
+      })
+        .setLngLat([city.longitude, city.latitude])
+        .addTo(mapboxMap);
     });
   };
 
   const addCityLabels = () => {
-    if (!mapboxMapRef.current || !labelsContainerRef.current) return;
+    if (!window.mapRef) return;
     updateCityLabels();
-    console.log(`🏙️ Added ${indianCitiesData.length} city labels to map`);
+    console.log(`🏙️ Added city labels to map`);
   };
 
   const initializeMap = (tileSource: string, lat: number, lng: number) => {
@@ -100,7 +92,8 @@ const Map: React.FC<MapProps> = ({
     mapboxgl.accessToken =
       "pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw";
 
-    mapboxMapRef.current = new mapboxgl.Map({
+    // Create map and store in globalThis
+    window.mapRef = new mapboxgl.Map({
       container: mapElementRef.current,
       style: {
         version: 8,
@@ -133,48 +126,43 @@ const Map: React.FC<MapProps> = ({
       preserveDrawingBuffer: true,
     });
 
-    // Expose mapRef in globalThis
-    if (typeof window !== "undefined") {
-      window.mapRef = mapboxMapRef.current;
-    }
-
-    mapboxMapRef.current.on("load", () => {
+    window.mapRef.on("load", () => {
       console.log("🗺️ Mapbox GL map loaded successfully");
       addCityLabels();
-      mapboxMapRef.current?.resize();
-      mapboxMapRef.current?.triggerRepaint();
+      window.mapRef?.resize();
+      window.mapRef?.triggerRepaint();
     });
 
-    mapboxMapRef.current.on("moveend", () => {
+    window.mapRef.on("moveend", () => {
       const event = new CustomEvent("map-center-changed");
       window.dispatchEvent(event);
       updateCityLabels();
     });
 
-    mapboxMapRef.current.on("move", () => {
+    window.mapRef.on("move", () => {
       const event = new CustomEvent("map-center-changed");
       window.dispatchEvent(event);
     });
 
-    mapboxMapRef.current.on("zoomend", () => {
+    window.mapRef.on("zoomend", () => {
       const event = new CustomEvent("map-zoom-changed");
       window.dispatchEvent(event);
       updateCityLabels();
-      if (mapboxMapRef.current) {
-        mapboxMapRef.current.resize();
-        mapboxMapRef.current.triggerRepaint();
+      if (window.mapRef) {
+        window.mapRef.resize();
+        window.mapRef.triggerRepaint();
       }
     });
 
-    mapboxMapRef.current.on("zoom", () => {
+    window.mapRef.on("zoom", () => {
       const event = new CustomEvent("map-zoom-changed");
       window.dispatchEvent(event);
-      if (mapboxMapRef.current) {
-        mapboxMapRef.current.triggerRepaint();
+      if (window.mapRef) {
+        window.mapRef.triggerRepaint();
       }
     });
 
-    mapboxMapRef.current.on("error", (e: any) => {
+    window.mapRef.on("error", (e: any) => {
       if (
         e.error &&
         e.error.message &&
@@ -185,105 +173,64 @@ const Map: React.FC<MapProps> = ({
       console.error("🗺️ Mapbox GL map error:", e);
     });
 
-    mapboxMapRef.current.dragPan.disable();
-    mapboxMapRef.current.scrollZoom.disable();
-    mapboxMapRef.current.boxZoom.disable();
-    mapboxMapRef.current.dragRotate.disable();
-    mapboxMapRef.current.keyboard.disable();
-    mapboxMapRef.current.doubleClickZoom.disable();
-    mapboxMapRef.current.touchZoomRotate.disable();
+    window.mapRef.dragPan.disable();
+    window.mapRef.scrollZoom.disable();
+    window.mapRef.boxZoom.disable();
+    window.mapRef.dragRotate.disable();
+    window.mapRef.keyboard.disable();
+    window.mapRef.doubleClickZoom.disable();
+    window.mapRef.touchZoomRotate.disable();
   };
 
   useEffect(() => {
-    if (!container) return;
-
-    containerRef.current = container;
-
-    // Create map container
-    const mapContainer = document.createElement("div");
-    mapContainer.id = "map-background";
-    mapContainer.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 0;
-      opacity: 1;
-      pointer-events: none;
-      display: block;
-      visibility: visible;
-      transform: translateZ(0);
-      will-change: transform;
-      backface-visibility: hidden;
-      -webkit-font-smoothing: antialiased;
-    `;
-
-    container.appendChild(mapContainer);
-    mapElementRef.current = mapContainer;
-
-    // Create container for HTML-based city labels
-    const labelsContainer = document.createElement("div");
-    labelsContainer.id = "city-labels-container";
-    labelsContainer.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 2;
-    `;
-    container.appendChild(labelsContainer);
-    labelsContainerRef.current = labelsContainer;
+    if (!container || !mapElementRef.current) return;
 
     // Ensure container has minimum dimensions
-    if (mapContainer.clientWidth === 0 || mapContainer.clientHeight === 0) {
-      mapContainer.style.width = "100%";
-      mapContainer.style.height = "100%";
-      mapContainer.style.minWidth = "100px";
-      mapContainer.style.minHeight = "100px";
+    if (
+      mapElementRef.current.clientWidth === 0 ||
+      mapElementRef.current.clientHeight === 0
+    ) {
+      mapElementRef.current.style.width = "100%";
+      mapElementRef.current.style.height = "100%";
+      mapElementRef.current.style.minWidth = "100px";
+      mapElementRef.current.style.minHeight = "100px";
     }
 
     // Initialize map
-    currentTileSourceRef.current = "/tiles-map/{z}/{x}/{y}.png";
-    initializeMap(
-      currentTileSourceRef.current,
-      initialLatRef.current,
-      initialLngRef.current
-    );
+    const tileSource = "/tiles-map/{z}/{x}/{y}.png";
+    initializeMap(tileSource, initialLat, initialLng);
 
     // Create MapManager instance
     const mapManagerInstance: MapManagerInstance = {
       updateCenter: (lat: number, lng: number, zoom?: number) => {
-        if (!mapboxMapRef.current) return;
+        if (!window.mapRef) return;
         const jumpOptions: mapboxgl.CameraOptions = {
           center: [lng, lat],
         };
         if (typeof zoom === "number" && Number.isFinite(zoom)) {
           jumpOptions.zoom = zoom;
         }
-        mapboxMapRef.current.jumpTo(jumpOptions);
+        window.mapRef.jumpTo(jumpOptions);
       },
       getCenter: () => {
-        if (!mapboxMapRef.current) return null;
-        const center = mapboxMapRef.current.getCenter();
+        if (!window.mapRef) return null;
+        const center = window.mapRef.getCenter();
         return {
           lat: center.lat,
           lng: center.lng,
         };
       },
       getZoom: () => {
-        if (!mapboxMapRef.current) return null;
-        return mapboxMapRef.current.getZoom();
+        if (!window.mapRef) return null;
+        return window.mapRef.getZoom();
       },
       setZoom: (zoom: number) => {
-        if (!mapboxMapRef.current) return;
-        mapboxMapRef.current.setZoom(zoom);
+        if (!window.mapRef) return;
+        window.mapRef.setZoom(zoom);
       },
-      getMapboxMap: () => mapboxMapRef.current,
+      getMapboxMap: () => window.mapRef,
       resize: () => {
-        mapboxMapRef.current?.resize();
+        window.mapRef?.resize();
       },
       isMapVisible: () => {
         if (mapElementRef.current) {
@@ -297,14 +244,15 @@ const Map: React.FC<MapProps> = ({
       toggleMapVisibility: () => {
         if (mapElementRef.current) {
           const isVisible =
-            mapManagerInstanceRef.current?.isMapVisible() || false;
+            mapElementRef.current.style.visibility !== "hidden" &&
+            mapElementRef.current.style.opacity !== "0";
           mapElementRef.current.style.visibility = isVisible
             ? "hidden"
             : "visible";
           mapElementRef.current.style.opacity = isVisible ? "0" : "1";
-          if (mapboxMapRef.current) {
+          if (window.mapRef) {
             setTimeout(() => {
-              mapboxMapRef.current?.resize();
+              window.mapRef?.resize();
             }, 0);
           }
           return !isVisible;
@@ -312,7 +260,6 @@ const Map: React.FC<MapProps> = ({
         return false;
       },
       updateMapSource: (tileSource: string) => {
-        currentTileSourceRef.current = tileSource;
         if (!mapElementRef.current) {
           console.error("Cannot update map source: map element not found");
           return;
@@ -321,25 +268,25 @@ const Map: React.FC<MapProps> = ({
         let currentCenter: [number, number] | null = null;
         let currentZoom: number | null = null;
 
-        if (mapboxMapRef.current) {
-          const center = mapboxMapRef.current.getCenter();
+        if (window.mapRef) {
+          const center = window.mapRef.getCenter();
           currentCenter = [center.lng, center.lat];
-          currentZoom = mapboxMapRef.current.getZoom();
-          mapboxMapRef.current.remove();
-          mapboxMapRef.current = null;
+          currentZoom = window.mapRef.getZoom();
+          window.mapRef.remove();
+          window.mapRef = null;
         }
 
         if (mapElementRef.current) {
           mapElementRef.current.innerHTML = "";
         }
 
-        const lat = currentCenter ? currentCenter[1] : initialLatRef.current;
-        const lng = currentCenter ? currentCenter[0] : initialLngRef.current;
+        const lat = currentCenter ? currentCenter[1] : initialLat;
+        const lng = currentCenter ? currentCenter[0] : initialLng;
 
         initializeMap(tileSource, lat, lng);
 
-        if (currentZoom !== null && mapboxMapRef.current) {
-          mapboxMapRef.current.setZoom(currentZoom);
+        if (currentZoom !== null && window.mapRef) {
+          window.mapRef.setZoom(currentZoom);
         }
 
         console.log(`🗺️ Map reinitialized with new source: ${tileSource}`);
@@ -348,78 +295,43 @@ const Map: React.FC<MapProps> = ({
         let currentCenter: [number, number] | null = null;
         let currentZoom: number | null = null;
 
-        if (mapboxMapRef.current) {
-          const center = mapboxMapRef.current.getCenter();
+        if (window.mapRef) {
+          const center = window.mapRef.getCenter();
           currentCenter = [center.lng, center.lat];
-          currentZoom = mapboxMapRef.current.getZoom();
-          mapboxMapRef.current.remove();
-          mapboxMapRef.current = null;
+          currentZoom = window.mapRef.getZoom();
+          window.mapRef.remove();
+          window.mapRef = null;
         }
 
-        containerRef.current = newContainer;
-
-        const mapContainer = document.createElement("div");
-        mapContainer.id = "map-background";
-        mapContainer.style.cssText = `
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          z-index: 0;
-          opacity: 1;
-          pointer-events: none;
-          display: block;
-          visibility: visible;
-          transform: translateZ(0);
-          will-change: transform;
-          backface-visibility: hidden;
-          -webkit-font-smoothing: antialiased;
-        `;
-
-        newContainer.appendChild(mapContainer);
-        mapElementRef.current = mapContainer;
-
-        const labelsContainer = document.createElement("div");
-        labelsContainer.id = "city-labels-container";
-        labelsContainer.style.cssText = `
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          pointer-events: none;
-          z-index: 2;
-        `;
-        newContainer.appendChild(labelsContainer);
-        labelsContainerRef.current = labelsContainer;
-
-        if (mapContainer.clientWidth === 0 || mapContainer.clientHeight === 0) {
-          mapContainer.style.width = "100%";
-          mapContainer.style.height = "100%";
-          mapContainer.style.minWidth = "100px";
-          mapContainer.style.minHeight = "100px";
+        // Note: This function is kept for backward compatibility
+        // but the map container is now managed by React
+        if (mapElementRef.current && newContainer !== container) {
+          // If container changed, we'd need to handle it differently
+          // For now, we'll just reinitialize in the current container
+          console.warn(
+            "reinitializeInContainer: Container change not fully supported with React refs"
+          );
         }
 
-        const lat = currentCenter ? currentCenter[1] : initialLatRef.current;
-        const lng = currentCenter ? currentCenter[0] : initialLngRef.current;
+        const lat = currentCenter ? currentCenter[1] : initialLat;
+        const lng = currentCenter ? currentCenter[0] : initialLng;
 
-        initializeMap(currentTileSourceRef.current, lat, lng);
+        if (mapElementRef.current) {
+          const tileSource = "/tiles-map/{z}/{x}/{y}.png";
+          initializeMap(tileSource, lat, lng);
 
-        if (currentZoom !== null && mapboxMapRef.current) {
-          mapboxMapRef.current.setZoom(currentZoom);
+          if (currentZoom !== null && window.mapRef) {
+            window.mapRef.setZoom(currentZoom);
+          }
         }
 
         console.log(`🗺️ Map reinitialized in new container`);
       },
     };
 
-    mapManagerInstanceRef.current = mapManagerInstance;
-
     // Store in globalThis
     if (typeof window !== "undefined") {
       window.mapManager = mapManagerInstance;
-      window.mapRef = mapboxMapRef.current;
     }
 
     // Notify parent
@@ -428,27 +340,58 @@ const Map: React.FC<MapProps> = ({
     }
 
     return () => {
-      if (mapboxMapRef.current) {
-        mapboxMapRef.current.remove();
-        mapboxMapRef.current = null;
-      }
-      if (mapElementRef.current && mapElementRef.current.parentNode) {
-        mapElementRef.current.parentNode.removeChild(mapElementRef.current);
-      }
-      if (labelsContainerRef.current && labelsContainerRef.current.parentNode) {
-        labelsContainerRef.current.parentNode.removeChild(
-          labelsContainerRef.current
-        );
+      // Remove city labels
+      if (window.mapRef) {
+        const markers = window.mapRef
+          .getContainer()
+          .querySelectorAll(".mapboxgl-marker");
+        markers.forEach((marker) => marker.remove());
+
+        window.mapRef.remove();
+        window.mapRef = null;
       }
       // Clean up globalThis
       if (typeof window !== "undefined") {
         window.mapManager = null;
-        window.mapRef = null;
       }
     };
   }, [container, onMapReady]);
 
-  return null; // This component doesn't render anything directly
+  if (!container) return null;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        zIndex: 0,
+        opacity: 1,
+        pointerEvents: "none",
+        display: "block",
+        visibility: "visible",
+        transform: "translateZ(0)",
+        willChange: "transform",
+        backfaceVisibility: "hidden",
+        WebkitFontSmoothing: "antialiased",
+      }}
+    >
+      <div
+        ref={mapElementRef}
+        id="map-background"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          zIndex: 0,
+        }}
+      />
+    </div>
+  );
 };
 
 export default Map;

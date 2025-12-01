@@ -186,7 +186,18 @@ export interface AircraftStore {
   showAircraftDetails: (aircraft: Aircraft) => void;
 }
 
-export interface UIStore {
+export interface NotificationStore {
+  notification: NotificationState | null;
+  setNotification: (notification: NotificationState | null) => void;
+}
+
+export interface ThreatStore {
+  lockThreat: (aircraft: Aircraft) => void;
+  executeThreat: (aircraft: Aircraft) => void;
+}
+
+export interface MapStore {
+  // UI state
   zoomLevel: number;
   showOtherNodes: boolean;
   centerMode: "mother" | "self";
@@ -202,26 +213,6 @@ export interface UIStore {
   toggleCenterMode: () => void;
   toggleShowOtherNodes: () => void;
   toggleShowThreatDialog: () => void;
-}
-
-export interface NotificationStore {
-  notification: NotificationState | null;
-  setNotification: (notification: NotificationState | null) => void;
-}
-
-export interface ThreatStore {
-  lockThreat: (aircraft: Aircraft) => void;
-  executeThreat: (aircraft: Aircraft) => void;
-}
-
-export interface MapStore {
-  convertToCartesian: (
-    deltaLat: number,
-    deltaLng: number,
-    zoom: number
-  ) => { x: number; y: number };
-  getMapManager: () => MapManagerInstance | null;
-  toggleMapVisibility: () => void;
 }
 
 export interface UDPStore {
@@ -264,4 +255,3 @@ export interface UseMapManagerProps {
 export type ReadBitsFn = (start: number, len: number) => number;
 export type ReadI16Fn = (start: number) => number;
 export type ReadU32Fn = (start: number) => number;
-

@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { useAircraftStore } from "../store/useAircraftStore";
-import { useUIStore } from "../store/useUIStore";
+import { useMapStore } from "../store/useMapStore";
 import { useThreatStore } from "../store/useThreatStore";
 import { getNearestThreats } from "../lib/utils";
 import { ThreatWithDistance, ThreatDialogProps } from "../lib/types";
@@ -10,7 +10,7 @@ export type { ThreatWithDistance };
 
 const ThreatDialog: React.FC<ThreatDialogProps> = ({ isVisible }) => {
   const { aircraft, nodeId } = useAircraftStore();
-  const { showThreatDialog, centerMode } = useUIStore();
+  const { showThreatDialog, centerMode } = useMapStore();
   const { lockThreat, executeThreat } = useThreatStore();
 
   const centerAircraft = useMemo(() => {
