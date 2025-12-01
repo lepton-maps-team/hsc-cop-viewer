@@ -484,3 +484,4 @@ export class MapManager {
     console.log(`🗺️ Map reinitialized in new container`);
   }
 }
+

@@ -1,15 +1,28 @@
-import { Aircraft } from "../types";
+import React, { useEffect, useRef, useMemo } from "react";
+import { useStore } from "../store/useStore";
 
-export class AdaptiveRadarCircles {
-  public create(
-    visualizationArea: HTMLElement,
-    centerAircraft: Aircraft,
-    aircraft: Map<string, Aircraft>,
-    zoomLevel: number,
-    convertToCartesian: (deltaLat: number, deltaLng: number) => { x: number; y: number },
-    updateRangeInfo: (adaptiveRange: number, maxDistance: number) => void
-  ): void {
-    if (!centerAircraft) return;
+const AdaptiveRadarCircles: React.FC = () => {
+  const { aircraft, zoomLevel, centerMode, nodeId, convertToCartesian } =
+    useStore();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const centerAircraft = useMemo(() => {
+    if (aircraft.size === 0) return null;
+    const aircraftArray = Array.from(aircraft.values());
+    if (centerMode === "mother") {
+      return (
+        aircraftArray.find((a) => a.aircraftType === "mother") ||
+        aircraftArray[0]
+      );
+    }
+    return aircraft.get(nodeId) || aircraftArray[0];
+  }, [aircraft, centerMode, nodeId]);
+
+  useEffect(() => {
+    if (!centerAircraft || !containerRef.current) return;
+
+    // Clear existing circles
+    containerRef.current.innerHTML = "";
 
     let maxDistance = 0;
     aircraft.forEach((ac, id) => {
@@ -17,7 +30,11 @@ export class AdaptiveRadarCircles {
 
       const relativeLat = ac.lat - centerAircraft.lat;
       const relativeLng = ac.lng - centerAircraft.lng;
-      const cartesianCoords = convertToCartesian(relativeLat, relativeLng);
+      const cartesianCoords = convertToCartesian(
+        relativeLat,
+        relativeLng,
+        zoomLevel
+      );
 
       const distance = Math.sqrt(
         cartesianCoords.x * cartesianCoords.x +
@@ -85,15 +102,30 @@ export class AdaptiveRadarCircles {
         text-rendering: optimizeLegibility;
       `;
 
-      visualizationArea.appendChild(circle);
-      visualizationArea.appendChild(rangeLabel);
+      containerRef.current.appendChild(circle);
+      containerRef.current.appendChild(rangeLabel);
 
       console.log(
         `📡 Created radar circle ${i}: radius=${clampedRadius.toFixed(1)}px, range≈${estimatedNM}NM`
       );
     }
+  }, [centerAircraft, aircraft, zoomLevel, convertToCartesian]);
 
-    updateRangeInfo(adaptiveRange, maxDistance);
-  }
-}
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        zIndex: 1,
+      }}
+    />
+  );
+};
 
+export { AdaptiveRadarCircles };
+export default AdaptiveRadarCircles;

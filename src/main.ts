@@ -441,8 +441,8 @@ function setupUdpClient(host: string, port: number): Promise<void> {
               circleRanges, // opcode102J - Circle ranges
               opcode: 102,
             };
-            member.globalId = 10;
-            console.log("Member:", member.regionalData.metadata);
+            //  member.globalId = 10;
+            //console.log("Member:", member.regionalData.metadata);
             networkMembers.push(member);
             // Move offset to next member (after all data including variable length vectors)
             offset = sensorsOffset;
@@ -498,7 +498,7 @@ function setupUdpClient(host: string, port: number): Promise<void> {
           }
 
           latestNodes = engagingMembers;
-          console.log("Engaging Members (103):", engagingMembers);
+          //    console.log("Engaging Members (103):", engagingMembers);
           if (mainWindow)
             mainWindow.webContents.send("data-from-main", engagingMembers);
           return;
@@ -625,7 +625,7 @@ function setupUdpClient(host: string, port: number): Promise<void> {
           };
 
           latestNodes = [geoMessage];
-          console.log("Geo Message (122):", geoMessage);
+          //  console.log("Geo Message (122):", geoMessage);
           if (mainWindow)
             mainWindow.webContents.send("data-from-main", [geoMessage]);
           return;
