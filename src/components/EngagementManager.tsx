@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { UDPDataPoint } from "./UDPNodesManager";
 import mapboxgl from "mapbox-gl";
-import { useStore } from "../store/useStore";
+import { useUDPStore } from "../store/useUDPStore";
+import { useMapStore } from "../store/useMapStore";
 
 export type EngagementData = {
   globalId: number; // attacker
@@ -29,7 +30,8 @@ interface EngagementLine {
 }
 
 const EngagementManager: React.FC = () => {
-  const { engagements, udpDataPoints, getMapManager } = useStore();
+  const { engagements, udpDataPoints } = useUDPStore();
+  const { getMapManager } = useMapStore();
   const mapManager = getMapManager();
   const linesContainerRef = useRef<HTMLDivElement | null>(null);
   const [engagementLines, setEngagementLines] = useState<EngagementLine[]>([]);

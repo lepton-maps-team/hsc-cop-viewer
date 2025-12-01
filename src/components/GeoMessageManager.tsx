@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
-import { useStore } from "../store/useStore";
+import { useUDPStore } from "../store/useUDPStore";
+import { useMapStore } from "../store/useMapStore";
 
 export type GeoMessageData = {
   globalId: number;
@@ -18,7 +19,8 @@ export type GeoMessageData = {
 };
 
 const GeoMessageManager: React.FC = () => {
-  const { geoMessages, getMapManager } = useStore();
+  const { geoMessages } = useUDPStore();
+  const { getMapManager } = useMapStore();
   const mapManager = getMapManager();
   const markersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
   const popupsRef = useRef<Map<number, mapboxgl.Popup>>(new Map());

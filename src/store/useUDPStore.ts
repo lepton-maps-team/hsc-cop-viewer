@@ -1,35 +1,10 @@
 import { create } from "zustand";
-import { Aircraft } from "../types";
 import { UDPDataPoint } from "../components/UDPNodesManager";
 import { EngagementData } from "../components/EngagementManager";
 import { GeoMessageData } from "../components/GeoMessageManager";
-import { MapManagerInstance } from "../components/MapManager";
-import { convertToCartesian } from "../lib/utils";
+import { useNotificationStore } from "./useNotificationStore";
 
-// Store mapManager in globalThis
-declare global {
-  interface Window {
-    mapManager: MapManagerInstance | null;
-  }
-}
-
-interface NotificationState {
-  message: string;
-  subMessage: string;
-  type: "lock" | "execute";
-}
-
-interface AppStore {
-  // State
-  aircraft: Map<string, Aircraft>;
-  nodeId: string;
-  zoomLevel: number;
-  showOtherNodes: boolean;
-  centerMode: "mother" | "self";
-  viewMode: "normal" | "self-only";
-  showThreatDialog: boolean;
-  selectedAircraft: Aircraft | null;
-  notification: NotificationState | null;
+interface UDPStore {
   networkMembers: UDPDataPoint[];
   engagements: EngagementData[];
   geoMessages: GeoMessageData[];
@@ -38,18 +13,6 @@ interface AppStore {
   lockedNodeIds: Set<number>;
   threatLockStatus: Map<number, boolean>;
   dialogOpenForNodeId: number | null;
-
-  // Actions
-  setAircraft: (aircraft: Map<string, Aircraft>) => void;
-  updateAircraft: (id: string, aircraft: Aircraft) => void;
-  deleteAircraft: (id: string) => void;
-  setZoomLevel: (level: number) => void;
-  setShowOtherNodes: (show: boolean) => void;
-  setCenterMode: (mode: "mother" | "self") => void;
-  setViewMode: (mode: "normal" | "self-only") => void;
-  setShowThreatDialog: (show: boolean) => void;
-  setSelectedAircraft: (aircraft: Aircraft | null) => void;
-  setNotification: (notification: NotificationState | null) => void;
   setNetworkMembers: (members: UDPDataPoint[]) => void;
   setEngagements: (engagements: EngagementData[]) => void;
   setGeoMessages: (messages: GeoMessageData[]) => void;
@@ -61,34 +24,9 @@ interface AppStore {
   setThreatLockStatus: (threatId: number, isLocked: boolean) => void;
   setDialogOpenForNodeId: (nodeId: number | null) => void;
   processUDPData: (data: UDPDataPoint[]) => void;
-  lockThreat: (aircraft: Aircraft) => void;
-  executeThreat: (aircraft: Aircraft) => void;
-  zoomIn: () => void;
-  zoomOut: () => void;
-  toggleCenterMode: () => void;
-  toggleShowOtherNodes: () => void;
-  toggleShowThreatDialog: () => void;
-  showAircraftDetails: (aircraft: Aircraft) => void;
-  toggleMapVisibility: () => void;
-  convertToCartesian: (
-    deltaLat: number,
-    deltaLng: number,
-    zoom: number
-  ) => { x: number; y: number };
-  getMapManager: () => MapManagerInstance | null;
 }
 
-export const useStore = create<AppStore>((set, get) => ({
-  // Initial state
-  aircraft: new Map(),
-  nodeId: Math.random().toString(36).substr(2, 9),
-  zoomLevel: 5,
-  showOtherNodes: true,
-  centerMode: "mother",
-  viewMode: "normal",
-  showThreatDialog: true,
-  selectedAircraft: null,
-  notification: null,
+export const useUDPStore = create<UDPStore>((set, get) => ({
   networkMembers: [],
   engagements: [],
   geoMessages: [],
@@ -97,103 +35,10 @@ export const useStore = create<AppStore>((set, get) => ({
   lockedNodeIds: new Set(),
   threatLockStatus: new Map(),
   dialogOpenForNodeId: null,
-
-  // Actions
-  setAircraft: (aircraft) => set({ aircraft }),
-  updateAircraft: (id, aircraft) => {
-    const newAircraft = new Map(get().aircraft);
-    newAircraft.set(id, aircraft);
-    set({ aircraft: newAircraft });
-  },
-  deleteAircraft: (id) => {
-    const newAircraft = new Map(get().aircraft);
-    newAircraft.delete(id);
-    set({ aircraft: newAircraft });
-  },
-  setZoomLevel: (level) => set({ zoomLevel: level }),
-  setShowOtherNodes: (show) => set({ showOtherNodes: show }),
-  setCenterMode: (mode) => set({ centerMode: mode }),
-  setViewMode: (mode) => set({ viewMode: mode }),
-  setShowThreatDialog: (show) => set({ showThreatDialog: show }),
-  setSelectedAircraft: (aircraft) => set({ selectedAircraft: aircraft }),
-  setNotification: (notification) => set({ notification }),
   setNetworkMembers: (members) => set({ networkMembers: members }),
   setEngagements: (engagements) => set({ engagements }),
   setGeoMessages: (messages) => set({ geoMessages: messages }),
   setUdpDataPoints: (points) => set({ udpDataPoints: points }),
-  lockThreat: (aircraft) => {
-    aircraft.isLocked = true;
-    const newAircraft = new Map(get().aircraft);
-    newAircraft.set(aircraft.id, aircraft);
-    set({
-      aircraft: newAircraft,
-      notification: {
-        message: "🎯 TARGET LOCKED",
-        subMessage: aircraft.callSign,
-        type: "lock",
-      },
-    });
-    setTimeout(() => set({ notification: null }), 2000);
-  },
-  executeThreat: (aircraft) => {
-    const newAircraft = new Map(get().aircraft);
-    newAircraft.delete(aircraft.id);
-    set({
-      aircraft: newAircraft,
-      notification: {
-        message: "💥 TARGET ELIMINATED",
-        subMessage: aircraft.callSign,
-        type: "execute",
-      },
-    });
-    setTimeout(() => set({ notification: null }), 2000);
-  },
-  zoomIn: () => {
-    const currentZoom = get().zoomLevel;
-    const newZoom = Math.min(currentZoom + 1, 13);
-    set({ zoomLevel: newZoom });
-  },
-  zoomOut: () => {
-    const currentZoom = get().zoomLevel;
-    if (currentZoom <= 1) return;
-    const newZoom = Math.max(currentZoom - 1, 1);
-    set({ zoomLevel: newZoom });
-  },
-  toggleCenterMode: () => {
-    const { centerMode, aircraft, nodeId } = get();
-    const newMode = centerMode === "mother" ? "self" : "mother";
-    if (newMode === "self") {
-      const selfAircraft = aircraft.get(nodeId);
-      if (!selfAircraft) {
-        console.warn(
-          "⚠️ Cannot switch to self-centered mode: self aircraft not found"
-        );
-        return;
-      }
-    }
-    set({ centerMode: newMode });
-  },
-  toggleShowOtherNodes: () => {
-    set({ showOtherNodes: !get().showOtherNodes });
-  },
-  toggleShowThreatDialog: () => {
-    set({ showThreatDialog: !get().showThreatDialog });
-  },
-  showAircraftDetails: (aircraft) => {
-    set({ selectedAircraft: aircraft });
-  },
-  toggleMapVisibility: () => {
-    const mapManager = typeof window !== "undefined" ? window.mapManager : null;
-    if (mapManager) {
-      mapManager.toggleMapVisibility();
-    }
-  },
-  convertToCartesian: (deltaLat, deltaLng, zoom) => {
-    return convertToCartesian(deltaLat, deltaLng, zoom);
-  },
-  getMapManager: () => {
-    return typeof window !== "undefined" ? window.mapManager : null;
-  },
   setHasInitialCentering: (has) => set({ hasInitialCentering: has }),
   setLockedNodeIds: (ids) => set({ lockedNodeIds: ids }),
   addLockedNodeId: (id) => {

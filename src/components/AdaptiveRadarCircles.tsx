@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useMemo } from "react";
-import { useStore } from "../store/useStore";
+import { useAircraftStore } from "../store/useAircraftStore";
+import { useUIStore } from "../store/useUIStore";
+import { useMapStore } from "../store/useMapStore";
 
 const AdaptiveRadarCircles: React.FC = () => {
-  const { aircraft, zoomLevel, centerMode, nodeId, convertToCartesian } =
-    useStore();
+  const { aircraft, nodeId } = useAircraftStore();
+  const { zoomLevel, centerMode } = useUIStore();
+  const { convertToCartesian } = useMapStore();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const centerAircraft = useMemo(() => {

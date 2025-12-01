@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Aircraft, AircraftType } from "../types";
-import { useStore } from "../store/useStore";
+import { useAircraftStore } from "../store/useAircraftStore";
 
 interface AircraftMarkerProps {
   aircraft: Aircraft;
@@ -13,7 +13,7 @@ const AircraftMarker: React.FC<AircraftMarkerProps> = ({
   isCenter,
   position,
 }) => {
-  const { showAircraftDetails } = useStore();
+  const { showAircraftDetails } = useAircraftStore();
   const [imageError, setImageError] = useState(false);
   const fixedSize = aircraft.aircraftType === "threat" ? 24 : 20;
 

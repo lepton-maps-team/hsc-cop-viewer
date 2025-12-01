@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { UDPDataPoint } from "./UDPNodesManager";
-import { useStore } from "../store/useStore";
+import { useUDPStore } from "../store/useUDPStore";
+import { useNotificationStore } from "../store/useNotificationStore";
 
 interface RedNodeDialogProps {
   node: UDPDataPoint;
@@ -19,8 +20,8 @@ const RedNodeDialog: React.FC<RedNodeDialogProps> = ({
     addLockedNodeId,
     setUdpDataPoints,
     udpDataPoints,
-    setNotification,
-  } = useStore();
+  } = useUDPStore();
+  const { setNotification } = useNotificationStore();
 
   useEffect(() => {
     if (!dialogRef.current) return;

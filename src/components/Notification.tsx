@@ -1,8 +1,8 @@
 import React, { useEffect } from "react";
-import { useStore } from "../store/useStore";
+import { useNotificationStore } from "../store/useNotificationStore";
 
 const Notification: React.FC = () => {
-  const { notification, setNotification } = useStore();
+  const { notification, setNotification } = useNotificationStore();
 
   useEffect(() => {
     if (notification) {

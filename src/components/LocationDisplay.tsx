@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { useStore } from "../store/useStore";
+import { useMapStore } from "../store/useMapStore";
 
 const LocationDisplay: React.FC = () => {
-  const { getMapManager } = useStore();
+  const { getMapManager } = useMapStore();
   const [center, setCenter] = useState<{ lat: number; lng: number } | null>(
     null
   );
@@ -19,13 +19,13 @@ const LocationDisplay: React.FC = () => {
     // Initial update
     updateCenter();
 
-    // Listen for map center changes
-    window.addEventListener("map-center-changed", updateCenter);
+      // Listen for map center changes
+      window.addEventListener("map-center-changed", updateCenter);
 
-    return () => {
-      window.removeEventListener("map-center-changed", updateCenter);
-    };
-  }, [getMapManager]);
+      return () => {
+        window.removeEventListener("map-center-changed", updateCenter);
+      };
+    }, []);
 
   return (
     <div

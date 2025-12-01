@@ -1,17 +1,14 @@
 import React, { useMemo } from "react";
-import { useStore } from "../store/useStore";
+import { useAircraftStore } from "../store/useAircraftStore";
+import { useUIStore } from "../store/useUIStore";
+import { useMapStore } from "../store/useMapStore";
 import { Aircraft } from "../types";
 import AircraftMarker from "./AircraftMarker";
 
 const AircraftLayer: React.FC = () => {
-  const {
-    aircraft,
-    viewMode,
-    zoomLevel,
-    centerMode,
-    nodeId,
-    convertToCartesian,
-  } = useStore();
+  const { aircraft, nodeId } = useAircraftStore();
+  const { viewMode, zoomLevel, centerMode } = useUIStore();
+  const { convertToCartesian } = useMapStore();
 
   const centerAircraft = useMemo(() => {
     if (aircraft.size === 0) return null;

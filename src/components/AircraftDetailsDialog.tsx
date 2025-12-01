@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { useStore } from "../store/useStore";
+import { useAircraftStore } from "../store/useAircraftStore";
+import { useThreatStore } from "../store/useThreatStore";
 
 const AircraftDetailsDialog: React.FC = () => {
-  const { selectedAircraft, setSelectedAircraft, lockThreat, executeThreat } =
-    useStore();
+  const { selectedAircraft, setSelectedAircraft } = useAircraftStore();
+  const { lockThreat, executeThreat } = useThreatStore();
   const [isClosing, setIsClosing] = useState(false);
 
   if (!selectedAircraft) return null;

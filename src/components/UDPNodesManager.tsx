@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
-import { useStore } from "../store/useStore";
+import { useUDPStore } from "../store/useUDPStore";
+import { useMapStore } from "../store/useMapStore";
+import { useNotificationStore } from "../store/useNotificationStore";
 import { calculateDistance } from "../lib/utils";
 
 // Type for UDP data points
@@ -74,9 +76,9 @@ const UDPNodesManager: React.FC<UDPNodesManagerProps> = ({
     setHasInitialCentering,
     setDialogOpenForNodeId,
     addLockedNodeId,
-    getMapManager,
-    setNotification,
-  } = useStore();
+  } = useUDPStore();
+  const { getMapManager } = useMapStore();
+  const { setNotification } = useNotificationStore();
 
   // Refs for DOM containers
   const udpDotsContainerRef = useRef<HTMLDivElement | null>(null);

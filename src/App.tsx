@@ -19,26 +19,20 @@ import EngagementManager, {
 import GeoMessageManager, {
   GeoMessageData,
 } from "./components/GeoMessageManager";
-import { useStore } from "./store/useStore";
+import { useAircraftStore } from "./store/useAircraftStore";
+import { useUIStore } from "./store/useUIStore";
+import { useNotificationStore } from "./store/useNotificationStore";
+import { useUDPStore } from "./store/useUDPStore";
+import { useMapStore } from "./store/useMapStore";
 
 const App: React.FC = () => {
-  // Zustand store
-  const {
-    aircraft,
-    nodeId,
-    centerMode,
-    showThreatDialog,
-    selectedAircraft,
-    notification,
-    setZoomLevel,
-    setNetworkMembers,
-    setEngagements,
-    setGeoMessages,
-    getMapManager,
-    processUDPData,
-  } = useStore();
-
-  console.log(notification);
+  const { aircraft, nodeId } = useAircraftStore();
+  const { centerMode, showThreatDialog, setZoomLevel } = useUIStore();
+  const { selectedAircraft } = useAircraftStore();
+  const { notification } = useNotificationStore();
+  const { setNetworkMembers, setEngagements, setGeoMessages, processUDPData } =
+    useUDPStore();
+  const { getMapManager } = useMapStore();
 
   const visualizationAreaRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -55,7 +49,7 @@ const App: React.FC = () => {
 
         // Update network members table (will be updated after processUDPData updates the store)
         setTimeout(() => {
-          const currentPoints = useStore.getState().udpDataPoints;
+          const currentPoints = useUDPStore.getState().udpDataPoints;
           const members = getNetworkMembers(currentPoints);
           setNetworkMembers(members);
         }, 0);

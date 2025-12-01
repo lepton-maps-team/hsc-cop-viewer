@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { UDPDataPoint } from "./UDPNodesManager";
-import { useStore } from "../store/useStore";
+import { useUDPStore } from "../store/useUDPStore";
 
 interface GreenNodeDialogProps {
   node: UDPDataPoint;
@@ -14,7 +14,7 @@ const GreenNodeDialog: React.FC<GreenNodeDialogProps> = ({
   onClose,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
-  const { setDialogOpenForNodeId } = useStore();
+  const { setDialogOpenForNodeId } = useUDPStore();
 
   useEffect(() => {
     if (!dialogRef.current) return;

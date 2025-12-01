@@ -1,5 +1,6 @@
 import React from "react";
-import { useStore } from "../store/useStore";
+import { useUIStore } from "../store/useUIStore";
+import { useMapStore } from "../store/useMapStore";
 
 const RightSidebar: React.FC = () => {
   const {
@@ -11,17 +12,18 @@ const RightSidebar: React.FC = () => {
     toggleShowOtherNodes,
     toggleCenterMode,
     toggleShowThreatDialog,
-    toggleMapVisibility,
-    getMapManager,
-  } = useStore();
+    zoomIn: storeZoomIn,
+    zoomOut: storeZoomOut,
+  } = useUIStore();
+  const { toggleMapVisibility, getMapManager } = useMapStore();
 
   const mapManager = getMapManager();
   const isMapVisible = mapManager?.getMapboxMap() ? true : false;
 
   const zoomIn = () => {
-    const currentZoom = useStore.getState().zoomLevel;
+    const currentZoom = useUIStore.getState().zoomLevel;
     const newZoom = Math.min(currentZoom + 1, 13);
-    useStore.getState().zoomIn();
+    storeZoomIn();
     const mapMgr = getMapManager();
     if (mapMgr) {
       const center = mapMgr.getCenter();
@@ -34,10 +36,10 @@ const RightSidebar: React.FC = () => {
   };
 
   const zoomOut = () => {
-    const currentZoom = useStore.getState().zoomLevel;
+    const currentZoom = useUIStore.getState().zoomLevel;
     if (currentZoom <= 1) return;
     const newZoom = Math.max(currentZoom - 1, 1);
-    useStore.getState().zoomOut();
+    storeZoomOut();
     const mapMgr = getMapManager();
     if (mapMgr) {
       const center = mapMgr.getCenter();

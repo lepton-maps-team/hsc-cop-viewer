@@ -1,8 +1,8 @@
 import React from "react";
-import { useStore } from "../store/useStore";
+import { useAircraftStore } from "../store/useAircraftStore";
 
 const DebugInfo: React.FC = () => {
-  const { aircraft, nodeId } = useStore();
+  const { aircraft, nodeId } = useAircraftStore();
   const selfAircraft = aircraft.get(nodeId);
   const threatCount = Array.from(aircraft.values()).filter(
     (a) => a.aircraftType === "threat"
