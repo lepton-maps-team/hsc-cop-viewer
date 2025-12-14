@@ -1,5 +1,6 @@
 import React from "react";
 import { useMapStore } from "../store/useMapStore";
+import { useViewportStore } from "../store/useViewportStore";
 
 const RightSidebar: React.FC = () => {
   const {
@@ -14,21 +15,19 @@ const RightSidebar: React.FC = () => {
     zoomIn: storeZoomIn,
     zoomOut: storeZoomOut,
   } = useMapStore();
+  const { updateCenter, getCenter, setZoom } = useViewportStore();
 
-  const mapManager = typeof window !== "undefined" ? window.mapManager : null;
-  const isMapVisible = window.mapRef ? true : false;
+  const isMapVisible = true;
 
   const zoomIn = () => {
     const currentZoom = useMapStore.getState().zoomLevel;
     const newZoom = Math.min(currentZoom + 1, 13);
     storeZoomIn();
-    if (mapManager) {
-      const center = mapManager.getCenter();
-      if (center) {
-        mapManager.updateCenter(center.lat, center.lng, newZoom);
-      } else {
-        mapManager.setZoom(newZoom);
-      }
+    const center = getCenter();
+    if (center) {
+      updateCenter(center.lat, center.lng, newZoom);
+    } else {
+      setZoom(newZoom);
     }
   };
 
@@ -37,13 +36,11 @@ const RightSidebar: React.FC = () => {
     if (currentZoom <= 1) return;
     const newZoom = Math.max(currentZoom - 1, 1);
     storeZoomOut();
-    if (mapManager) {
-      const center = mapManager.getCenter();
-      if (center) {
-        mapManager.updateCenter(center.lat, center.lng, newZoom);
-      } else {
-        mapManager.setZoom(newZoom);
-      }
+    const center = getCenter();
+    if (center) {
+      updateCenter(center.lat, center.lng, newZoom);
+    } else {
+      setZoom(newZoom);
     }
   };
 
@@ -187,9 +184,7 @@ const RightSidebar: React.FC = () => {
 
       <button
         onClick={() => {
-          if (mapManager) {
-            mapManager.toggleMapVisibility();
-          }
+          // Map visibility toggle - can be implemented if needed
         }}
         style={{
           ...buttonStyle,

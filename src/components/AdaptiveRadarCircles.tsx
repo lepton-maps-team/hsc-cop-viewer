@@ -1,13 +1,17 @@
-import React, { useEffect, useRef, useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
+import { PathLayer } from "@deck.gl/layers";
 import { useAircraftStore } from "../store/useAircraftStore";
 import { useMapStore } from "../store/useMapStore";
+import { useViewportStore } from "../store/useViewportStore";
+import { useLayerStore } from "../store/useLayerStore";
 import { convertToCartesian } from "../lib/utils";
 import { Aircraft } from "../lib/types";
 
 const AdaptiveRadarCircles: React.FC = () => {
   const { aircraft, nodeId } = useAircraftStore();
   const { zoomLevel, centerMode } = useMapStore();
-  const containerRef = useRef<HTMLDivElement>(null);
+  const { viewState } = useViewportStore();
+  const { addLayer, removeLayer } = useLayerStore();
 
   const centerAircraft = useMemo(() => {
     if (aircraft.size === 0) return null;
@@ -22,10 +26,10 @@ const AdaptiveRadarCircles: React.FC = () => {
   }, [aircraft, centerMode, nodeId]);
 
   useEffect(() => {
-    if (!centerAircraft || !containerRef.current) return;
-
-    // Clear existing circles
-    containerRef.current.innerHTML = "";
+    if (!centerAircraft) {
+      removeLayer("radar-circles");
+      return;
+    }
 
     let maxDistance = 0;
     aircraft.forEach((ac: Aircraft, id: string) => {
@@ -46,89 +50,59 @@ const AdaptiveRadarCircles: React.FC = () => {
       maxDistance = Math.max(maxDistance, Math.abs(distance));
     });
 
-    console.log(
-      `📡 Maximum aircraft distance: ${maxDistance.toFixed(2)} units`
-    );
+    const ranges = [50, 100, 150, 200, 250, 300];
+    const numCircles = 6;
+    const minDimension = 400;
+    const rangeRatio = maxDistance > 0 ? minDimension / (maxDistance * 2) : 1;
 
-    const minRadarRange = 20;
-    const bufferFactor = 1.5;
-    const adaptiveRange = Math.max(minRadarRange, maxDistance * bufferFactor);
-    const viewportWidth = window.innerWidth - 60;
-    const viewportHeight = window.innerHeight - 60;
-    const minDimension = Math.min(viewportWidth, viewportHeight);
+    const circlePaths: Array<{
+      path: Array<[number, number]>;
+      range: number;
+    }> = [];
 
-    const numCircles = 3;
-
-    for (let i = 1; i <= numCircles; i++) {
-      const circle = document.createElement("div");
-
-      const rangeRatio = adaptiveRange / 50;
-      const baseRadius = i * ((minDimension * 0.35 * rangeRatio) / numCircles);
+    ranges.forEach((rangeNM, i) => {
+      const baseRadius =
+        ((i + 1) * (minDimension * 0.35 * rangeRatio)) / numCircles;
+      const zoomLevel = viewState.zoom || 7;
       const radius = baseRadius / zoomLevel;
 
-      const minRadius = 30;
-      const maxRadius = minDimension * 0.4;
-      const clampedRadius = Math.max(minRadius, Math.min(maxRadius, radius));
+      // Convert radius to degrees (approximate)
+      const radiusDeg = radius / 111000; // rough conversion
 
-      circle.style.cssText = `
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: ${clampedRadius * 2}px;
-        height: ${clampedRadius * 2}px;
-        margin-top: -${clampedRadius}px;
-        margin-left: -${clampedRadius}px;
-        border: 2px solid #00ff00;
-        border-radius: 50%;
-        pointer-events: none;
-        box-sizing: border-box;
-        opacity: 0.7;
-      `;
+      // Create circle path
+      const path: Array<[number, number]> = [];
+      const steps = 64;
+      for (let j = 0; j <= steps; j++) {
+        const angle = (j / steps) * 2 * Math.PI;
+        const lat =
+          centerAircraft.lat + radiusDeg * Math.cos(angle);
+        const lng =
+          centerAircraft.lng + radiusDeg * Math.sin(angle);
+        path.push([lng, lat]);
+      }
 
-      const rangeLabel = document.createElement("div");
-      const estimatedNM = Math.round((clampedRadius / minDimension) * 400);
-      rangeLabel.textContent = `${estimatedNM}NM`;
-      rangeLabel.style.cssText = `
-        position: absolute;
-        top: 50%;
-        left: ${50 + (clampedRadius / minDimension) * 100}%;
-        color: #00ff00;
-        font-family: monospace;
-        font-size: 10px;
-        background: rgba(0, 0, 0, 0.7);
-        padding: 2px 4px;
-        border-radius: 2px;
-        transform: translateY(-50%);
-        z-index: 2;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-        text-rendering: optimizeLegibility;
-      `;
+      circlePaths.push({ path, range: rangeNM });
+    });
 
-      containerRef.current.appendChild(circle);
-      containerRef.current.appendChild(rangeLabel);
+    const layer = new PathLayer({
+      id: "radar-circles",
+      data: circlePaths,
+      getPath: (d: any) => d.path,
+      getColor: [0, 255, 0, 180],
+      getWidth: 2,
+      widthMinPixels: 1,
+      widthMaxPixels: 2,
+      pickable: false,
+    });
 
-      console.log(
-        `📡 Created radar circle ${i}: radius=${clampedRadius.toFixed(1)}px, range≈${estimatedNM}NM`
-      );
-    }
-  }, [centerAircraft, aircraft, zoomLevel, convertToCartesian]);
+    addLayer(layer);
 
-  return (
-    <div
-      ref={containerRef}
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-        zIndex: 1,
-      }}
-    />
-  );
+    return () => {
+      removeLayer("radar-circles");
+    };
+  }, [centerAircraft, aircraft, zoomLevel, viewState.zoom, addLayer, removeLayer]);
+
+  return null;
 };
 
-export { AdaptiveRadarCircles };
 export default AdaptiveRadarCircles;

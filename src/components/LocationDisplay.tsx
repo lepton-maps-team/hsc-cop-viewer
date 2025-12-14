@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from "react";
+import { useViewportStore } from "../store/useViewportStore";
 
 const LocationDisplay: React.FC = () => {
+  const { getCenter } = useViewportStore();
   const [center, setCenter] = useState<{ lat: number; lng: number } | null>(
     null
   );
 
   useEffect(() => {
     const updateCenter = () => {
-      const mapCenter = window.mapManager?.getCenter();
+      const mapCenter = getCenter();
       if (mapCenter) {
         setCenter(mapCenter);
       }
@@ -22,7 +24,7 @@ const LocationDisplay: React.FC = () => {
     return () => {
       window.removeEventListener("map-center-changed", updateCenter);
     };
-  }, []);
+  }, [getCenter]);
 
   return (
     <div

@@ -1,5 +1,3 @@
-import mapboxgl from "mapbox-gl";
-
 // ============================================================================
 // Aircraft Types
 // ============================================================================
@@ -25,12 +23,20 @@ export type Aircraft = {
 // ============================================================================
 // Map Types
 // ============================================================================
+export interface ViewState {
+  longitude: number;
+  latitude: number;
+  zoom: number;
+  pitch?: number;
+  bearing?: number;
+}
+
 export interface MapManagerInstance {
   updateCenter: (lat: number, lng: number, zoom?: number) => void;
   getCenter: () => { lat: number; lng: number } | null;
   getZoom: () => number | null;
   setZoom: (zoom: number) => void;
-  getMapboxMap: () => mapboxgl.Map | null;
+  getMapboxMap: () => null;
   resize: () => void;
   isMapVisible: () => boolean;
   toggleMapVisibility: () => boolean;
@@ -168,9 +174,7 @@ export interface UDPNodeMarkerProps {
   onClick: () => void;
 }
 
-export interface UDPNodesManagerProps {
-  visualizationArea: HTMLElement | null;
-}
+export interface UDPNodesManagerProps {}
 
 // ============================================================================
 // Store Types

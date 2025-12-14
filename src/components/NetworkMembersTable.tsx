@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useUDPStore } from "../store/useUDPStore";
+import { useViewportStore } from "../store/useViewportStore";
 
 const NetworkMembersTable: React.FC = () => {
   const { networkMembers } = useUDPStore();
+  const { getCenter } = useViewportStore();
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [mapCenter, setMapCenter] = useState<{
     lat: number;
@@ -11,7 +13,7 @@ const NetworkMembersTable: React.FC = () => {
 
   useEffect(() => {
     const updateMapCenter = () => {
-      const center = window.mapManager?.getCenter();
+      const center = getCenter();
       if (center) {
         setMapCenter(center);
       }
@@ -23,7 +25,7 @@ const NetworkMembersTable: React.FC = () => {
     return () => {
       window.removeEventListener("map-center-changed", updateMapCenter);
     };
-  }, []);
+  }, [getCenter]);
 
   const toggleDetails = (globalId: number) => {
     setExpandedRows((prev) => {
