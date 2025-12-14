@@ -337,10 +337,27 @@ class TacticalDisplayClient {
     } else {
       this.mapManager.reinitializeInContainer(visualizationArea);
 
+      // Reinitialize engagement manager containers and list
+      this.engagementManager.initializeContainers(visualizationArea);
+      this.engagementManager.createEngagementList(container);
+      // Refresh engagement list display with current engagements
+      this.engagementManager.refreshEngagementList();
+
       // Re-setup event listeners for the reinitialized map
       this.mapManager.getMapboxMap()?.on("load", () => {
         this.udpNodesManager.updateUDPDots();
         this.udpNodesManager.updateConnectionLines();
+        this.engagementManager.updateLines();
+        // Re-update geo messages when map loads after reinitialization
+        const allData = this.udpNodesManager.getAllNodes();
+        const geoMessages = allData.filter((point) => point.opcode === 122);
+        if (geoMessages.length > 0) {
+          // Use UDP data if available
+          this.geoMessageManager.updateMessages(geoMessages as any);
+        } else {
+          // Otherwise recreate from stored messages
+          this.geoMessageManager.recreateMarkers();
+        }
       });
 
       this.mapManager.getMapboxMap()?.on("move", () => {
@@ -348,6 +365,7 @@ class TacticalDisplayClient {
           this.udpNodesManager.updateUDPDots();
           this.udpNodesManager.updateConnectionLines();
           this.udpNodesManager.updateRadarCircles();
+          this.engagementManager.updateLines();
         }
       });
 
@@ -356,6 +374,7 @@ class TacticalDisplayClient {
           this.udpNodesManager.updateUDPDots();
           this.udpNodesManager.updateConnectionLines();
           this.udpNodesManager.updateRadarCircles();
+          this.engagementManager.updateLines();
         }
       });
 
@@ -377,10 +396,23 @@ class TacticalDisplayClient {
       if (this.mapManager.getMapboxMap()?.loaded) {
         this.udpNodesManager.updateUDPDots();
         this.udpNodesManager.updateConnectionLines();
+        this.engagementManager.updateLines();
+        // Re-update geo messages if map is already loaded
+        const allData = this.udpNodesManager.getAllNodes();
+        const geoMessages = allData.filter((point) => point.opcode === 122);
+        if (geoMessages.length > 0) {
+          // Use UDP data if available
+          this.geoMessageManager.updateMessages(geoMessages as any);
+        } else {
+          // Otherwise recreate from stored messages
+          this.geoMessageManager.recreateMarkers();
+        }
       }
     }
 
-    if (centerAircraft) {
+    // Only create adaptive radar circles if UDP data is not available
+    // UDP system provides its own radar circles via updateRadarCircles()
+    if (centerAircraft && !this.udpNodesManager.hasDataPoints()) {
       this.adaptiveRadarCircles.create(
         visualizationArea,
         centerAircraft,

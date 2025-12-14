@@ -1233,15 +1233,39 @@ export class UDPNodesManager {
     }
 
     // Use opcode102J ranges if available, otherwise fall back to adaptive calculation
-    const numCircles = circleRanges.length > 0 ? circleRanges.length : 3;
+    let numCircles = circleRanges.length > 0 ? circleRanges.length : 3;
     const useOpcodeRanges = circleRanges.length > 0;
+
+    // Filter out overlapping circle ranges to prevent collisions
+    // Ensure minimum spacing between circles (10% of previous range or minimum 5NM)
+    let filteredRanges: number[] = [];
+    if (useOpcodeRanges && circleRanges.length > 0) {
+      // Sort ranges to ensure they're in order
+      const sortedRanges = [...circleRanges].sort((a, b) => a - b);
+      let lastRange = 0;
+
+      for (const range of sortedRanges) {
+        // Minimum spacing: 10% of last range or 5NM, whichever is larger
+        const minSpacing = Math.max(5, lastRange * 0.1);
+        if (range >= lastRange + minSpacing || lastRange === 0) {
+          filteredRanges.push(range);
+          lastRange = range;
+        }
+      }
+
+      // Use filtered ranges, but ensure we have at least some circles
+      if (filteredRanges.length > 0) {
+        circleRanges = filteredRanges;
+        numCircles = filteredRanges.length;
+      }
+    }
 
     for (let i = 0; i < numCircles; i++) {
       const circle = document.createElement("div");
 
       let rangeNM: number;
-      if (useOpcodeRanges) {
-        // Use range from opcode102J
+      if (useOpcodeRanges && circleRanges.length > 0) {
+        // Use range from opcode102J (now filtered)
         rangeNM = circleRanges[i];
       } else {
         // Calculate radius based on adaptive range (fallback)
@@ -1260,7 +1284,36 @@ export class UDPNodesManager {
 
       const minRadius = 30;
       const maxRadius = minDimension * 0.4;
-      const clampedRadius = Math.max(minRadius, Math.min(maxRadius, radius));
+      let clampedRadius = Math.max(minRadius, Math.min(maxRadius, radius));
+
+      // Additional check: ensure this circle doesn't overlap with previous circles
+      // by enforcing minimum pixel spacing between consecutive circles
+      if (i > 0) {
+        // Calculate what the previous circle's radius would be
+        let prevRangeNM: number;
+        if (useOpcodeRanges && circleRanges.length > 0 && i > 0) {
+          prevRangeNM = circleRanges[i - 1];
+        } else {
+          prevRangeNM = (i * adaptiveRangeNM) / numCircles;
+        }
+        const prevRangeRatio = prevRangeNM / 50;
+        const prevBaseRadius =
+          (i * (minDimension * 0.35 * prevRangeRatio)) / numCircles;
+        const prevRadius = prevBaseRadius / zoomLevel;
+        const prevClampedRadius = Math.max(
+          minRadius,
+          Math.min(maxRadius, prevRadius)
+        );
+
+        // Minimum spacing of 20 pixels between circles
+        const minPixelSpacing = 20;
+        if (clampedRadius - prevClampedRadius < minPixelSpacing) {
+          // Adjust this circle's radius to maintain spacing
+          const adjustedRadius = prevClampedRadius + minPixelSpacing;
+          // Don't exceed max radius
+          clampedRadius = Math.min(adjustedRadius, maxRadius);
+        }
+      }
 
       circle.style.cssText = `
         position: absolute;

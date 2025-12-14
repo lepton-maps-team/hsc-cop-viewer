@@ -387,6 +387,13 @@ export class EngagementManager {
     this.updateEngagementLines();
   }
 
+  /**
+   * Refresh the engagement list display (useful after recreating the container)
+   */
+  public refreshEngagementList(): void {
+    this.updateEngagementList();
+  }
+
   public destroy(): void {
     if (this.engagementLinesContainer) {
       this.engagementLinesContainer.innerHTML = "";

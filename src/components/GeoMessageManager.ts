@@ -281,8 +281,53 @@ export class GeoMessageManager {
     return types[geoType] || `TYPE_${geoType}`;
   }
 
+  /**
+   * Recreate markers from stored messages (useful after map reinitialization)
+   */
+  public recreateMarkers(): void {
+    if (!this.mapManager) return;
+
+    const mapboxMap = this.mapManager.getMapboxMap();
+    if (!mapboxMap) return;
+
+    // Clear existing markers (handle case where map might have been reinitialized)
+    this.markers.forEach((marker) => {
+      try {
+        marker.remove();
+      } catch (e) {
+        // Marker might already be removed if map was reinitialized
+        console.log("⚠️ GeoMessageManager: Marker already removed, skipping");
+      }
+    });
+    this.markers.clear();
+    this.popups.clear();
+
+    // Recreate markers from stored messages
+    if (this.messages.size > 0) {
+      console.log(
+        `📍 GeoMessageManager: Recreating ${this.messages.size} markers after map reinitialization`
+      );
+      this.messages.forEach((message) => {
+        this.createMarker(message, mapboxMap);
+      });
+    }
+  }
+
+  /**
+   * Get all stored messages
+   */
+  public getStoredMessages(): GeoMessageData[] {
+    return Array.from(this.messages.values());
+  }
+
   public destroy(): void {
-    this.markers.forEach((marker) => marker.remove());
+    this.markers.forEach((marker) => {
+      try {
+        marker.remove();
+      } catch (e) {
+        // Ignore errors if marker already removed
+      }
+    });
     this.markers.clear();
     this.popups.clear();
     this.messages.clear();

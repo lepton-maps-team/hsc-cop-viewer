@@ -162,6 +162,15 @@ export class MapManager {
       const isVisible = this.isMapVisible();
       this.mapElement.style.visibility = isVisible ? "hidden" : "visible";
       this.mapElement.style.opacity = isVisible ? "0" : "1";
+
+      // Also toggle labels container visibility
+      if (this.labelsContainer) {
+        this.labelsContainer.style.visibility = isVisible
+          ? "hidden"
+          : "visible";
+        this.labelsContainer.style.opacity = isVisible ? "0" : "1";
+      }
+
       // Ensure map can still calculate projections even when hidden
       if (this.mapboxMap) {
         // Trigger a resize to ensure map maintains dimensions
