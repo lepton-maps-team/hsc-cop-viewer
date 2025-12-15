@@ -495,6 +495,11 @@ class TacticalDisplayClient {
       `🎯 Positioning: top: 50%, left: 50%, margin-top: -${halfSize}px, margin-left: -${halfSize}px`
     );
 
+    // In 102 (self-only) screen, render a central compass over the map
+    if (this.viewMode === "self-only") {
+      this.renderCompassOverlay(visualizationArea, centerAircraft.heading);
+    }
+
     console.log(
       `🎨 Rendering ${this.aircraft.size} aircraft (center: ${centerAircraft.callSign})`
     );
@@ -1103,6 +1108,131 @@ class TacticalDisplayClient {
 
   private generateId(): string {
     return Math.random().toString(36).substr(2, 9);
+  }
+
+  /**
+   * Render a compass overlay in the center of the visualization area (102 screen).
+   * Heading in degrees, 0 = North, 90 = East.
+   */
+  private renderCompassOverlay(
+    visualizationArea: HTMLElement,
+    heading: number | undefined
+  ): void {
+    // Remove any existing compass overlay
+    const existing = document.getElementById("compass-overlay");
+    if (existing) {
+      existing.remove();
+    }
+
+    const compass = document.createElement("div");
+    compass.id = "compass-overlay";
+    const size = 200;
+    const half = size / 2;
+    compass.style.cssText = `
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: ${size}px;
+      height: ${size}px;
+      margin-top: -${half}px;
+      margin-left: -${half}px;
+      border: 2px solid #00ff00;
+      border-radius: 50%;
+      box-sizing: border-box;
+      pointer-events: none;
+      background: transparent;
+      box-shadow: 0 0 10px rgba(0, 255, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+    `;
+
+    // Crosshair lines
+    const vertical = document.createElement("div");
+    vertical.style.cssText = `
+      position: absolute;
+      width: 2px;
+      height: 100%;
+      background: rgba(0, 255, 0, 0.4);
+      left: 50%;
+      top: 0;
+      transform: translateX(-50%);
+    `;
+    const horizontal = document.createElement("div");
+    horizontal.style.cssText = `
+      position: absolute;
+      width: 100%;
+      height: 2px;
+      background: rgba(0, 255, 0, 0.4);
+      top: 50%;
+      left: 0;
+      transform: translateY(-50%);
+    `;
+
+    compass.appendChild(vertical);
+    compass.appendChild(horizontal);
+
+    // Cardinal labels
+    const cardinal = (text: string, top: string, left: string) => {
+      const label = document.createElement("div");
+      label.textContent = text;
+      label.style.cssText = `
+        position: absolute;
+        top: ${top};
+        left: ${left};
+        transform: translate(-50%, -50%);
+        color: #00ff00;
+        font-family: monospace;
+        font-size: 14px;
+        font-weight: bold;
+      `;
+      compass.appendChild(label);
+    };
+
+    cardinal("N", "8%", "50%");
+    cardinal("S", "92%", "50%");
+    cardinal("W", "50%", "8%");
+    cardinal("E", "50%", "92%");
+
+    // Heading pointer (triangle)
+    const pointer = document.createElement("div");
+    pointer.style.cssText = `
+      position: absolute;
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 18px solid #00ff00;
+      top: 14px;
+      left: 50%;
+      transform-origin: 50% 100%;
+    `;
+
+    const safeHeading =
+      typeof heading === "number" && Number.isFinite(heading) ? heading : 0;
+    // Default pointer points to North; rotate by heading degrees
+    pointer.style.transform = `translateX(-50%) rotate(${safeHeading}deg)`;
+
+    compass.appendChild(pointer);
+
+    // Heading text
+    const headingText = document.createElement("div");
+    headingText.textContent = `${safeHeading.toFixed(0)}°`;
+    headingText.style.cssText = `
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #00ff00;
+      font-family: monospace;
+      font-size: 12px;
+      font-weight: bold;
+      text-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+    `;
+    compass.appendChild(headingText);
+
+    visualizationArea.appendChild(compass);
   }
 
   public sendMessage(message: string) {
