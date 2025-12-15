@@ -5,12 +5,14 @@ export class RightSidebar {
 
   public create(
     container: HTMLElement,
-    viewMode: "normal" | "self-only",
+    viewMode: "normal" | "self-only" | "network-103" | "engagement-104",
     zoomLevel: number,
     showOtherNodes: boolean,
     centerMode: "mother" | "self",
     mapManager: MapManager | null,
-    onViewModeChange: (mode: "normal" | "self-only") => void,
+    onViewModeChange: (
+      mode: "normal" | "self-only" | "network-103" | "engagement-104"
+    ) => void,
     onZoomIn: () => void,
     onZoomOut: () => void,
     onToggleNodes: () => void,
@@ -97,6 +99,72 @@ export class RightSidebar {
     });
     button102.setAttribute("data-view-mode", "102");
 
+    const button103 = document.createElement("button");
+    button103.textContent = "103";
+    button103.style.cssText = `
+      width: 40px;
+      height: 30px;
+      background: ${
+        viewMode === "network-103" ? "#00c4ff" : "rgba(60, 60, 70, 0.9)"
+      };
+      color: white;
+      border: 1.5px solid ${
+        viewMode === "network-103" ? "#33d6ff" : "rgba(100, 100, 120, 0.6)"
+      };
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 10px;
+      font-weight: bold;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    `;
+    button103.addEventListener("click", () => onViewModeChange("network-103"));
+    button103.addEventListener("mouseenter", () => {
+      button103.style.opacity = "0.8";
+    });
+    button103.addEventListener("mouseleave", () => {
+      button103.style.opacity = "1";
+    });
+    button103.setAttribute("data-view-mode", "103");
+
+    const button104 = document.createElement("button");
+    button104.textContent = "104";
+    button104.style.cssText = `
+      width: 40px;
+      height: 30px;
+      background: ${
+        viewMode === "engagement-104" ? "#ff4dff" : "rgba(60, 60, 70, 0.9)"
+      };
+      color: white;
+      border: 1.5px solid ${
+        viewMode === "engagement-104" ? "#ff80ff" : "rgba(100, 100, 120, 0.6)"
+      };
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 10px;
+      font-weight: bold;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    `;
+    button104.addEventListener("click", () => onViewModeChange("engagement-104"));
+    button104.addEventListener("mouseenter", () => {
+      button104.style.opacity = "0.8";
+    });
+    button104.addEventListener("mouseleave", () => {
+      button104.style.opacity = "1";
+    });
+    button104.setAttribute("data-view-mode", "104");
+
     const zoomOutButton = document.createElement("button");
     zoomOutButton.textContent = "−";
     zoomOutButton.style.cssText = `
@@ -176,12 +244,25 @@ export class RightSidebar {
 
     const toggleMapButton = document.createElement("button");
     toggleMapButton.textContent = "MAP";
+    const isMapDisabledForViewMode = viewMode !== "self-only";
     toggleMapButton.style.cssText = `
       width: 40px;
       height: 30px;
-      background: ${mapManager?.getMapboxMap() ? "#4488ff" : "rgba(60, 60, 70, 0.9)"};
+      background: ${
+        isMapDisabledForViewMode
+          ? "rgba(40, 40, 50, 0.6)"
+          : mapManager?.getMapboxMap()
+            ? "#4488ff"
+            : "rgba(60, 60, 70, 0.9)"
+      };
       color: white;
-      border: 1.5px solid ${mapManager?.getMapboxMap() ? "#66aaff" : "rgba(100, 100, 120, 0.6)"};
+      border: 1.5px solid ${
+        isMapDisabledForViewMode
+          ? "rgba(80, 80, 90, 0.8)"
+          : mapManager?.getMapboxMap()
+            ? "#66aaff"
+            : "rgba(100, 100, 120, 0.6)"
+      };
       border-radius: 4px;
       cursor: pointer;
       font-family: monospace;
@@ -194,25 +275,34 @@ export class RightSidebar {
       margin-top: 5px;
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
     `;
-    toggleMapButton.addEventListener("click", () => {
-      onToggleMap();
-      const isVisible = mapManager?.getMapboxMap() ? true : false;
-      toggleMapButton.style.background = isVisible
-        ? "#4488ff"
-        : "rgba(60, 60, 70, 0.9)";
-      toggleMapButton.style.borderColor = isVisible
-        ? "#66aaff"
-        : "rgba(100, 100, 120, 0.6)";
-    });
-    toggleMapButton.addEventListener("mouseenter", () => {
-      toggleMapButton.style.opacity = "0.8";
-    });
-    toggleMapButton.addEventListener("mouseleave", () => {
-      toggleMapButton.style.opacity = "1";
-    });
+    if (isMapDisabledForViewMode) {
+      // Disable the MAP button completely in 101 screen
+      toggleMapButton.disabled = true;
+      toggleMapButton.style.cursor = "not-allowed";
+      toggleMapButton.style.opacity = "0.5";
+    } else {
+      toggleMapButton.addEventListener("click", () => {
+        onToggleMap();
+        const isVisible = mapManager?.getMapboxMap() ? true : false;
+        toggleMapButton.style.background = isVisible
+          ? "#4488ff"
+          : "rgba(60, 60, 70, 0.9)";
+        toggleMapButton.style.borderColor = isVisible
+          ? "#66aaff"
+          : "rgba(100, 100, 120, 0.6)";
+      });
+      toggleMapButton.addEventListener("mouseenter", () => {
+        toggleMapButton.style.opacity = "0.8";
+      });
+      toggleMapButton.addEventListener("mouseleave", () => {
+        toggleMapButton.style.opacity = "1";
+      });
+    }
 
     sidebar.appendChild(button101);
     sidebar.appendChild(button102);
+    sidebar.appendChild(button103);
+    sidebar.appendChild(button104);
     sidebar.appendChild(zoomOutButton);
     sidebar.appendChild(zoomDisplay);
     sidebar.appendChild(zoomInButton);

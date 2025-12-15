@@ -24,6 +24,9 @@ export class UDPNodesManager {
   private dialogOpenForNodeId: number | null = null; // Track which node has dialog open
   private lockedNodeIds: Set<number> = new Set(); // Track locked nodes
   private threatLockStatus: Map<number, boolean> = new Map(); // Track threat lock status by threatId (opcode 106)
+  private dialogsEnabled: boolean = false; // Control whether red/green dialogs can be shown
+  private radarCirclesEnabled: boolean = true; // Control whether radar circles are rendered
+  private nodesVisible: boolean = true; // Control whether UDP nodes/lines are rendered
 
   constructor(mapManager: MapManager | null = null) {
     this.mapManager = mapManager;
@@ -36,6 +39,16 @@ export class UDPNodesManager {
   }
 
   /**
+   * Dialogs are globally disabled. This is kept only to satisfy existing calls.
+   */
+  setDialogsEnabled(_enabled: boolean): void {
+    this.dialogsEnabled = false;
+    // Close any open dialog immediately
+    this.hideRedNodeDialog();
+    this.hideGreenNodeDialog();
+  }
+
+  /**
    * Set callbacks for red node actions
    */
   setRedNodeCallbacks(
@@ -44,6 +57,34 @@ export class UDPNodesManager {
   ): void {
     this.onLockNode = onLock;
     this.onExecuteNode = onExecute;
+  }
+
+  /**
+   * Enable or disable display of UDP nodes (dots and connection lines).
+   */
+  setNodesVisible(visible: boolean): void {
+    this.nodesVisible = visible;
+
+    // When hiding nodes, clear existing dots and lines
+    if (!visible) {
+      if (this.udpDotsContainer) {
+        this.udpDotsContainer.innerHTML = "";
+      }
+      if (this.connectionLinesContainer) {
+        this.connectionLinesContainer.innerHTML = "";
+      }
+    }
+  }
+
+  /**
+   * Enable or disable radar circles globally.
+   */
+  setRadarCirclesEnabled(enabled: boolean): void {
+    this.radarCirclesEnabled = enabled;
+    if (!enabled && this.radarCirclesContainer) {
+      // Clear any existing circles when disabled
+      this.radarCirclesContainer.innerHTML = "";
+    }
   }
 
   /**
@@ -656,7 +697,12 @@ export class UDPNodesManager {
    * Update UDP symbols on the map
    */
   updateUDPDots(): void {
-    if (!this.mapManager || !this.udpDotsContainer) return;
+    if (!this.mapManager || !this.udpDotsContainer || !this.nodesVisible) {
+      if (this.udpDotsContainer) {
+        this.udpDotsContainer.innerHTML = "";
+      }
+      return;
+    }
 
     const mapboxMap = this.mapManager.getMapboxMap();
     if (!mapboxMap) return;
@@ -868,7 +914,12 @@ export class UDPNodesManager {
    * Update connection lines between friendly and enemy nodes, and between green nodes
    */
   updateConnectionLines(): void {
-    if (!this.mapManager || !this.connectionLinesContainer) return;
+    if (!this.mapManager || !this.connectionLinesContainer || !this.nodesVisible) {
+      if (this.connectionLinesContainer) {
+        this.connectionLinesContainer.innerHTML = "";
+      }
+      return;
+    }
 
     const mapboxMap = this.mapManager.getMapboxMap();
     if (!mapboxMap) return;
@@ -966,39 +1017,6 @@ export class UDPNodesManager {
 
             this.connectionLinesContainer.appendChild(line);
 
-            // Calculate midpoint for text label (positioned above the line)
-            const midX = (point1.x + point2.x) / 2;
-            const midY = (point1.y + point2.y) / 2;
-
-            // Create text element for distance (no background box)
-            const text = document.createElement("div");
-            text.style.cssText = `
-              position: absolute;
-              left: ${midX}px;
-              top: ${midY - 20}px;
-              transform: translateX(-50%);
-              color: #ffffff;
-              font-size: 14px;
-              font-weight: bold;
-              font-family: monospace;
-              pointer-events: none;
-              text-align: center;
-              white-space: nowrap;
-              text-shadow: 
-                0 0 6px rgba(0, 0, 0, 1),
-                0 0 10px rgba(0, 0, 0, 0.9),
-                0 0 14px rgba(0, 0, 0, 0.8),
-                0 2px 4px rgba(0, 0, 0, 1),
-                2px 2px 4px rgba(0, 0, 0, 1),
-                -2px 2px 4px rgba(0, 0, 0, 1),
-                2px -2px 4px rgba(0, 0, 0, 1),
-                -2px -2px 4px rgba(0, 0, 0, 1);
-              letter-spacing: 0.5px;
-            `;
-            text.textContent = `${distanceNM.toFixed(1)} NM`;
-
-            this.connectionLinesContainer.appendChild(text);
-
             console.log(
               `✅ Green line drawn: ${distanceNM.toFixed(1)} NM between nodes`
             );
@@ -1075,38 +1093,6 @@ export class UDPNodesManager {
 
             this.connectionLinesContainer.appendChild(line);
 
-            // Calculate midpoint for text label (positioned above the line)
-            const midX = (friendlyPoint.x + enemyPoint.x) / 2;
-            const midY = (friendlyPoint.y + enemyPoint.y) / 2;
-
-            // Create text element for distance (no background box)
-            const text = document.createElement("div");
-            text.style.cssText = `
-              position: absolute;
-              left: ${midX}px;
-              top: ${midY - 20}px;
-              transform: translateX(-50%);
-              color: #ffffff;
-              font-size: 14px;
-              font-weight: bold;
-              font-family: monospace;
-              pointer-events: none;
-              text-align: center;
-              white-space: nowrap;
-              text-shadow: 
-                0 0 6px rgba(0, 0, 0, 1),
-                0 0 10px rgba(0, 0, 0, 0.9),
-                0 0 14px rgba(0, 0, 0, 0.8),
-                0 2px 4px rgba(0, 0, 0, 1),
-                2px 2px 4px rgba(0, 0, 0, 1),
-                -2px 2px 4px rgba(0, 0, 0, 1),
-                2px -2px 4px rgba(0, 0, 0, 1),
-                -2px -2px 4px rgba(0, 0, 0, 1);
-              letter-spacing: 0.5px;
-            `;
-            text.textContent = `${distanceNM.toFixed(1)} NM`;
-
-            this.connectionLinesContainer.appendChild(text);
           }
         });
       });
@@ -1117,7 +1103,7 @@ export class UDPNodesManager {
    * Update radar circles centered on all nodes
    */
   updateRadarCircles(): void {
-    if (!this.radarCirclesContainer) return;
+    if (!this.radarCirclesContainer || !this.radarCirclesEnabled) return;
 
     // Clear existing circles
     this.radarCirclesContainer.innerHTML = "";
@@ -1155,128 +1141,44 @@ export class UDPNodesManager {
     `;
     this.radarCirclesContainer.appendChild(horizontalLine);
 
-    // Use all nodes (both green and red)
+    // Always draw exactly 3 circles at equal spacing
+    const numCircles = 3;
+
+    // Use all nodes (both green and red) just to estimate an overall range
     const allNodes = Array.from(this.udpDataPoints.values());
 
-    if (allNodes.length === 0) return;
-
-    // Get the center green node (same one used for map centering)
-    const centerGreenNode = this.getCenterGreenNode();
-
-    let maxDistanceNM = 0;
-
-    if (!centerGreenNode) {
-      // Fallback: calculate center from all nodes
-      const nodesCenter = this.calculateNodesCenter(allNodes);
-      if (!nodesCenter) return;
-
-      // Calculate max distance from center to any node
-      allNodes.forEach((node) => {
-        const distance = this.calculateDistance(
-          nodesCenter.lat,
-          nodesCenter.lng,
-          node.latitude,
-          node.longitude
-        );
-        maxDistanceNM = Math.max(maxDistanceNM, distance);
-      });
-    } else {
-      // Use the center green node as the reference
-      // Calculate max distance from center green node to any other node (green or red)
-      allNodes.forEach((node) => {
-        const distance = this.calculateDistance(
-          centerGreenNode.latitude,
-          centerGreenNode.longitude,
-          node.latitude,
-          node.longitude
-        );
-        maxDistanceNM = Math.max(maxDistanceNM, distance);
-      });
+    let maxDistanceNM = 50; // sensible default range
+    if (allNodes.length > 1) {
+      const center = this.calculateNodesCenter(allNodes);
+      if (center) {
+        allNodes.forEach((node) => {
+          const distance = this.calculateDistance(
+            center.lat,
+            center.lng,
+            node.latitude,
+            node.longitude
+          );
+          maxDistanceNM = Math.max(maxDistanceNM, distance);
+        });
+      }
     }
 
-    // Set minimum range
-    const minRangeNM = 10;
-    const bufferFactor = 1.5;
-    const adaptiveRangeNM = Math.max(minRangeNM, maxDistanceNM * bufferFactor);
+    // Set total range and viewport size
+    const minRangeNM = 30;
+    const totalRangeNM = Math.max(minRangeNM, maxDistanceNM * 1.5);
 
-    // Get viewport dimensions
     const viewportWidth = window.innerWidth - 60;
     const viewportHeight = window.innerHeight - 60;
     const minDimension = Math.min(viewportWidth, viewportHeight);
 
-    // Get circle ranges from opcode102J if available
-    let circleRanges: number[] = [];
-    if (centerGreenNode?.circleRanges) {
-      const ranges = centerGreenNode.circleRanges;
-      // Format D1-D6 as range values (combine digits to form range in NM)
-      // D1-D6 represent digits, format as D1D2D3.D4D5D6 or similar
-      const range1 =
-        ranges.D1 !== undefined && ranges.D1 !== 0 ? ranges.D1 : null;
-      const range2 =
-        ranges.D2 !== undefined && ranges.D2 !== 0 ? ranges.D2 : null;
-      const range3 =
-        ranges.D3 !== undefined && ranges.D3 !== 0 ? ranges.D3 : null;
-      const range4 =
-        ranges.D4 !== undefined && ranges.D4 !== 0 ? ranges.D4 : null;
-      const range5 =
-        ranges.D5 !== undefined && ranges.D5 !== 0 ? ranges.D5 : null;
-      const range6 =
-        ranges.D6 !== undefined && ranges.D6 !== 0 ? ranges.D6 : null;
-
-      // Use D1-D6 as individual range values (in NM)
-      if (range1 !== null) circleRanges.push(range1);
-      if (range2 !== null) circleRanges.push(range2);
-      if (range3 !== null) circleRanges.push(range3);
-      if (range4 !== null) circleRanges.push(range4);
-      if (range5 !== null) circleRanges.push(range5);
-      if (range6 !== null) circleRanges.push(range6);
-    }
-
-    // Use opcode102J ranges if available, otherwise fall back to adaptive calculation
-    let numCircles = circleRanges.length > 0 ? circleRanges.length : 3;
-    const useOpcodeRanges = circleRanges.length > 0;
-
-    // Filter out overlapping circle ranges to prevent collisions
-    // Ensure minimum spacing between circles (10% of previous range or minimum 5NM)
-    let filteredRanges: number[] = [];
-    if (useOpcodeRanges && circleRanges.length > 0) {
-      // Sort ranges to ensure they're in order
-      const sortedRanges = [...circleRanges].sort((a, b) => a - b);
-      let lastRange = 0;
-
-      for (const range of sortedRanges) {
-        // Minimum spacing: 10% of last range or 5NM, whichever is larger
-        const minSpacing = Math.max(5, lastRange * 0.1);
-        if (range >= lastRange + minSpacing || lastRange === 0) {
-          filteredRanges.push(range);
-          lastRange = range;
-        }
-      }
-
-      // Use filtered ranges, but ensure we have at least some circles
-      if (filteredRanges.length > 0) {
-        circleRanges = filteredRanges;
-        numCircles = filteredRanges.length;
-      }
-    }
-
     for (let i = 0; i < numCircles; i++) {
       const circle = document.createElement("div");
 
-      let rangeNM: number;
-      if (useOpcodeRanges && circleRanges.length > 0) {
-        // Use range from opcode102J (now filtered)
-        rangeNM = circleRanges[i];
-      } else {
-        // Calculate radius based on adaptive range (fallback)
-        const rangeRatio = adaptiveRangeNM / 50;
-        rangeNM = ((i + 1) * adaptiveRangeNM) / numCircles;
-      }
+      // Evenly spaced ranges
+      const rangeNM = ((i + 1) * totalRangeNM) / numCircles;
 
       // Calculate radius based on range
-      const rangeRatio = rangeNM / 50;
-      const baseRadius =
-        ((i + 1) * (minDimension * 0.35 * rangeRatio)) / numCircles;
+      const baseRadius = (minDimension * 0.35 * (i + 1)) / numCircles;
 
       // Use current zoom level if available
       const zoomLevel = this.mapManager?.getZoom() || 15;
@@ -1285,35 +1187,6 @@ export class UDPNodesManager {
       const minRadius = 30;
       const maxRadius = minDimension * 0.4;
       let clampedRadius = Math.max(minRadius, Math.min(maxRadius, radius));
-
-      // Additional check: ensure this circle doesn't overlap with previous circles
-      // by enforcing minimum pixel spacing between consecutive circles
-      if (i > 0) {
-        // Calculate what the previous circle's radius would be
-        let prevRangeNM: number;
-        if (useOpcodeRanges && circleRanges.length > 0 && i > 0) {
-          prevRangeNM = circleRanges[i - 1];
-        } else {
-          prevRangeNM = (i * adaptiveRangeNM) / numCircles;
-        }
-        const prevRangeRatio = prevRangeNM / 50;
-        const prevBaseRadius =
-          (i * (minDimension * 0.35 * prevRangeRatio)) / numCircles;
-        const prevRadius = prevBaseRadius / zoomLevel;
-        const prevClampedRadius = Math.max(
-          minRadius,
-          Math.min(maxRadius, prevRadius)
-        );
-
-        // Minimum spacing of 20 pixels between circles
-        const minPixelSpacing = 20;
-        if (clampedRadius - prevClampedRadius < minPixelSpacing) {
-          // Adjust this circle's radius to maintain spacing
-          const adjustedRadius = prevClampedRadius + minPixelSpacing;
-          // Don't exceed max radius
-          clampedRadius = Math.min(adjustedRadius, maxRadius);
-        }
-      }
 
       circle.style.cssText = `
         position: absolute;
@@ -1330,7 +1203,7 @@ export class UDPNodesManager {
         opacity: 0.7;
       `;
 
-      // Create range label using opcode102J range or calculated value
+      // Create range label
       const rangeLabel = document.createElement("div");
       rangeLabel.textContent = `${Math.round(rangeNM)}NM`;
       rangeLabel.style.cssText = `
@@ -1353,7 +1226,9 @@ export class UDPNodesManager {
     }
 
     console.log(
-      `📡 Created ${numCircles} radar circles centered on green nodes, max range: ${adaptiveRangeNM.toFixed(1)} NM`
+      `📡 Created ${numCircles} radar circles with equal spacing, total range: ${totalRangeNM.toFixed(
+        1
+      )} NM`
     );
   }
 
@@ -1364,6 +1239,9 @@ export class UDPNodesManager {
     node: UDPDataPoint,
     screenPoint: { x: number; y: number }
   ): void {
+    if (!this.dialogsEnabled) {
+      return;
+    }
     // Remove existing dialog if any
     if (this.redNodeDialog) {
       this.redNodeDialog.remove();
@@ -1616,6 +1494,9 @@ export class UDPNodesManager {
     node: UDPDataPoint,
     screenPoint: { x: number; y: number }
   ): void {
+    if (!this.dialogsEnabled) {
+      return;
+    }
     // Remove existing dialog if any
     if (this.redNodeDialog) {
       this.redNodeDialog.remove();

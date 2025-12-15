@@ -103,7 +103,7 @@ export class EngagementManager {
         target.latitude,
       ]);
 
-      // Create SVG line element
+      // Create SVG line element (without tooltips/dialogs)
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.style.cssText = `
         position: absolute;
@@ -126,261 +126,29 @@ export class EngagementManager {
       line.setAttribute("stroke-width", "2");
       line.setAttribute("stroke-dasharray", "5,5");
       line.setAttribute("opacity", "0.8");
-      line.style.pointerEvents = "auto";
-      line.style.cursor = "pointer";
+      line.style.pointerEvents = "none";
 
-      // Add arrow marker at target end
-      const defs = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "defs"
-      );
-      const marker = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "marker"
-      );
-      marker.setAttribute("id", `arrow-${engagement.globalId}`);
-      marker.setAttribute("markerWidth", "10");
-      marker.setAttribute("markerHeight", "10");
-      marker.setAttribute("refX", "9");
-      marker.setAttribute("refY", "3");
-      marker.setAttribute("orient", "auto");
-      marker.setAttribute("markerUnits", "strokeWidth");
-
-      const arrowPath = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "path"
-      );
-      arrowPath.setAttribute("d", "M0,0 L0,6 L9,3 z");
-      arrowPath.setAttribute("fill", "#ff4444");
-      marker.appendChild(arrowPath);
-      defs.appendChild(marker);
-      svg.appendChild(defs);
-
-      line.setAttribute("marker-end", `url(#arrow-${engagement.globalId})`);
-
-      // Add tooltip on hover
-      const tooltip = this.createTooltip(engagement, attacker, target);
-      let tooltipVisible = false;
-
-      line.addEventListener("mouseenter", (e) => {
-        if (!tooltipVisible) {
-          const rect = this.engagementLinesContainer!.getBoundingClientRect();
-          const midX = (attackerPoint.x + targetPoint.x) / 2;
-          const midY = (attackerPoint.y + targetPoint.y) / 2;
-          tooltip.style.left = `${midX}px`;
-          tooltip.style.top = `${midY - 60}px`;
-          this.engagementLinesContainer!.appendChild(tooltip);
-          tooltipVisible = true;
-        }
-      });
-
-      line.addEventListener("mouseleave", () => {
-        if (tooltipVisible && tooltip.parentNode) {
-          tooltip.parentNode.removeChild(tooltip);
-          tooltipVisible = false;
-        }
-      });
-
-      svg.appendChild(line);
       this.engagementLinesContainer.appendChild(svg);
+      svg.appendChild(line);
     });
   }
 
-  private createTooltip(
-    engagement: EngagementData,
-    attacker: UDPDataPoint,
-    target: UDPDataPoint
-  ): HTMLElement {
-    const tooltip = document.createElement("div");
-    tooltip.style.cssText = `
-      position: absolute;
-      background: rgba(0, 0, 0, 0.95);
-      border: 2px solid #ff4444;
-      border-radius: 6px;
-      padding: 10px;
-      color: white;
-      font-family: monospace;
-      font-size: 11px;
-      z-index: 300;
-      pointer-events: none;
-      min-width: 200px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
-    `;
-
-    const attackerCallsign = attacker.callsign || `ID${attacker.globalId}`;
-    const targetCallsign = target.callsign || `ID${target.globalId}`;
-
-    tooltip.innerHTML = `
-      <div style="color: #ff4444; font-weight: bold; margin-bottom: 8px; font-size: 12px; text-align: center; border-bottom: 1px solid #ff4444; padding-bottom: 5px;">
-        ⚔️ ENGAGEMENT
-      </div>
-      <div style="margin-bottom: 6px;">
-        <span style="color: #ffaa00;">Attacker:</span>
-        <span style="color: #00ff00; font-weight: bold;">${attackerCallsign}</span>
-        <span style="color: #888;">(${attacker.globalId})</span>
-      </div>
-      <div style="margin-bottom: 6px;">
-        <span style="color: #ffaa00;">Target:</span>
-        <span style="color: #ff4444; font-weight: bold;">${targetCallsign}</span>
-        <span style="color: #888;">(${target.globalId})</span>
-      </div>
-      <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.2);">
-        <div style="margin-bottom: 4px;">
-          <span style="color: #cccccc;">Weapon Launch:</span>
-          <span style="color: ${engagement.weaponLaunch ? "#00ff00" : "#888"}; font-weight: bold;">${engagement.weaponLaunch ? "YES" : "NO"}</span>
-        </div>
-        <div style="margin-bottom: 4px;">
-          <span style="color: #cccccc;">Hang Fire:</span>
-          <span style="color: ${engagement.hangFire ? "#ff4400" : "#888"}; font-weight: bold;">${engagement.hangFire ? "YES" : "NO"}</span>
-        </div>
-        <div style="margin-bottom: 4px;">
-          <span style="color: #cccccc;">TTH:</span>
-          <span style="color: #ffff00; font-weight: bold;">${engagement.tth}s</span>
-        </div>
-        <div style="margin-bottom: 4px;">
-          <span style="color: #cccccc;">TTA:</span>
-          <span style="color: #ffff00; font-weight: bold;">${engagement.tta}s</span>
-        </div>
-         <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
-           <div style="margin-bottom: 2px; font-size: 10px; color: #888;">
-             Ranges: dMax1=${isNaN(engagement.dMax1) ? "N/A" : engagement.dMax1.toFixed(2)}nm, dMax2=${isNaN(engagement.dMax2) ? "N/A" : engagement.dMax2.toFixed(2)}nm, dmin=${isNaN(engagement.dmin) ? "N/A" : engagement.dmin.toFixed(2)}nm
-           </div>
-         </div>
-      </div>
-    `;
-
-    return tooltip;
-  }
+  // Tooltips/dialogs removed per requirements
 
   public createEngagementList(parentContainer: HTMLElement): void {
-    const container = document.createElement("div");
-    container.id = "engagement-list";
-    container.style.cssText = `
-      position: fixed;
-      right: 70px;
-      top: 0;
-      width: 350px;
-      max-height: calc(100vh - 20px);
-      background: rgba(10, 10, 20, 0.95);
-      border: 2px solid rgba(255, 68, 68, 0.6);
-      border-radius: 8px;
-      padding: 10px;
-      margin: 10px;
-      overflow-y: auto;
-      z-index: 200;
-      font-family: 'Courier New', monospace;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
-    `;
-
-    // Header
-    const header = document.createElement("div");
-    header.style.cssText = `
-      color: #ff4444;
-      font-size: 18px;
-      font-weight: bold;
-      margin-bottom: 15px;
-      text-align: center;
-      padding-bottom: 10px;
-      border-bottom: 2px solid rgba(255, 68, 68, 0.3);
-    `;
-    header.textContent = " ENGAGEMENTS";
-    container.appendChild(header);
-
-    // Content container
-    const contentContainer = document.createElement("div");
-    contentContainer.id = "engagement-list-content";
-    container.appendChild(contentContainer);
-
-    parentContainer.appendChild(container);
-    this.engagementListContainer = contentContainer;
+    // Engagement list dialog is disabled globally; do not create any UI.
+    if (this.engagementListContainer) {
+      const parent = this.engagementListContainer.parentElement;
+      if (parent) {
+        parent.remove();
+      }
+      this.engagementListContainer = null;
+    }
   }
 
   private updateEngagementList(): void {
-    const contentContainer = document.getElementById("engagement-list-content");
-    if (!contentContainer) return;
-
-    if (this.engagements.size === 0) {
-      contentContainer.innerHTML = `
-        <div style="color: #888; text-align: center; padding: 20px;">
-          No active engagements
-        </div>
-      `;
-      return;
-    }
-
-    // Create list
-    const list = document.createElement("div");
-    list.style.cssText = `
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    `;
-
-    this.engagements.forEach((engagement) => {
-      const attacker = this.udpDataPoints.get(engagement.globalId);
-      const target = this.udpDataPoints.get(engagement.engagementTargetGid);
-
-      // Show engagement in list even if positions aren't available
-      const attackerCallsign = attacker?.callsign || `ID${engagement.globalId}`;
-      const targetCallsign =
-        target?.callsign || `ID${engagement.engagementTargetGid}`;
-
-      const item = document.createElement("div");
-      item.style.cssText = `
-        background: rgba(255, 68, 68, 0.1);
-        border: 1px solid rgba(255, 68, 68, 0.3);
-        border-radius: 4px;
-        padding: 10px;
-        cursor: pointer;
-        transition: background 0.2s;
-      `;
-
-      item.addEventListener("mouseenter", () => {
-        item.style.background = "rgba(255, 68, 68, 0.2)";
-      });
-
-      item.addEventListener("mouseleave", () => {
-        item.style.background = "rgba(255, 68, 68, 0.1)";
-      });
-
-      item.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-          <div style="color: #ffaa00; font-weight: bold; font-size: 12px;">
-            ${attackerCallsign}
-          </div>
-          <div style="color: #ff4444; font-size: 16px;">→</div>
-          <div style="color: #ff4444; font-weight: bold; font-size: 12px;">
-            ${targetCallsign}
-          </div>
-        </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 10px; color: #cccccc; margin-top: 6px;">
-          <div>
-            <span style="color: #888;">Weapon:</span>
-            <span style="color: ${engagement.weaponLaunch ? "#00ff00" : "#888"}; font-weight: bold;">${engagement.weaponLaunch ? "LAUNCHED" : "READY"}</span>
-          </div>
-          <div>
-            <span style="color: #888;">Hang Fire:</span>
-            <span style="color: ${engagement.hangFire ? "#ff4400" : "#888"}; font-weight: bold;">${engagement.hangFire ? "YES" : "NO"}</span>
-          </div>
-          <div>
-            <span style="color: #888;">TTH:</span>
-            <span style="color: #ffff00; font-weight: bold;">${engagement.tth}s</span>
-          </div>
-          <div>
-            <span style="color: #888;">TTA:</span>
-            <span style="color: #ffff00; font-weight: bold;">${engagement.tta}s</span>
-          </div>
-        </div>
-         <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 9px; color: #888;">
-           Ranges: dMax1=${isNaN(engagement.dMax1) ? "N/A" : engagement.dMax1.toFixed(2)}nm | dMax2=${isNaN(engagement.dMax2) ? "N/A" : engagement.dMax2.toFixed(2)}nm | dmin=${isNaN(engagement.dmin) ? "N/A" : engagement.dmin.toFixed(2)}nm
-         </div>
-      `;
-
-      list.appendChild(item);
-    });
-
-    contentContainer.innerHTML = "";
-    contentContainer.appendChild(list);
+    // Engagement list dialog is disabled globally; no-op.
+    return;
   }
 
   public updateLines(): void {
@@ -392,6 +160,13 @@ export class EngagementManager {
    */
   public refreshEngagementList(): void {
     this.updateEngagementList();
+  }
+
+  /**
+   * Get current engagements as an array (for external views like 104 screen).
+   */
+  public getEngagements(): EngagementData[] {
+    return Array.from(this.engagements.values());
   }
 
   public destroy(): void {

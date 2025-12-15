@@ -18,7 +18,8 @@ class TacticalDisplayClient {
   private showOtherNodes: boolean = true;
   private mapManager: MapManager | null = null;
   private centerMode: "mother" | "self" = "mother";
-  private viewMode: "normal" | "self-only" = "normal";
+  private viewMode: "normal" | "self-only" | "network-103" | "engagement-104" =
+    "normal";
 
   // UDP Nodes Manager
   private udpNodesManager: UDPNodesManager;
@@ -195,7 +196,8 @@ class TacticalDisplayClient {
   }
 
   private toggleThreatDialog() {
-    this.threatDialog.toggle();
+    // Dialogs are disabled globally; no-op.
+    return;
   }
 
   private updateUI() {
@@ -228,11 +230,13 @@ class TacticalDisplayClient {
 
     const visualizationArea = document.createElement("div");
     visualizationArea.id = "visualization-area";
+    const visualizationBackground =
+      this.viewMode === "normal" ? "#000000" : "transparent";
     visualizationArea.style.cssText = `
       position: relative;
       width: calc(100% - 60px);
       height: calc(100vh - 60px);
-      background: transparent;
+      background: ${visualizationBackground};
       overflow: hidden;
       margin: 0;
       padding: 0;
@@ -279,7 +283,9 @@ class TacticalDisplayClient {
 
       // Initialize engagement manager containers
       this.engagementManager.initializeContainers(visualizationArea);
-      this.engagementManager.createEngagementList(container);
+      if (this.viewMode !== "network-103") {
+        this.engagementManager.createEngagementList(container);
+      }
 
       // Set callbacks for red node actions
       this.udpNodesManager.setRedNodeCallbacks(
@@ -334,14 +340,27 @@ class TacticalDisplayClient {
         this.udpNodesManager.updateUDPDots();
         this.udpNodesManager.updateConnectionLines();
       }
+
+      // Map visibility per screen:
+      // - 101 (normal) and 103 (network-103): map hidden
+      // - 102 (self-only): map visible
+      const shouldShowMap = this.viewMode === "self-only";
+      const isVisible = this.mapManager.isMapVisible();
+      if (shouldShowMap && !isVisible) {
+        this.mapManager.toggleMapVisibility();
+      } else if (!shouldShowMap && isVisible) {
+        this.mapManager.toggleMapVisibility();
+      }
     } else {
       this.mapManager.reinitializeInContainer(visualizationArea);
 
       // Reinitialize engagement manager containers and list
       this.engagementManager.initializeContainers(visualizationArea);
-      this.engagementManager.createEngagementList(container);
-      // Refresh engagement list display with current engagements
-      this.engagementManager.refreshEngagementList();
+      if (this.viewMode !== "network-103") {
+        this.engagementManager.createEngagementList(container);
+        // Refresh engagement list display with current engagements
+        this.engagementManager.refreshEngagementList();
+      }
 
       // Re-setup event listeners for the reinitialized map
       this.mapManager.getMapboxMap()?.on("load", () => {
@@ -408,6 +427,17 @@ class TacticalDisplayClient {
           this.geoMessageManager.recreateMarkers();
         }
       }
+
+      // Map visibility per screen:
+      // - 101 (normal) and 103 (network-103): map hidden
+      // - 102 (self-only): map visible
+      const shouldShowMap = this.viewMode === "self-only";
+      const isVisible = this.mapManager.isMapVisible();
+      if (shouldShowMap && !isVisible) {
+        this.mapManager.toggleMapVisibility();
+      } else if (!shouldShowMap && isVisible) {
+        this.mapManager.toggleMapVisibility();
+      }
     }
 
     // Only create adaptive radar circles if UDP data is not available
@@ -428,11 +458,6 @@ class TacticalDisplayClient {
     if (!centerAircraft) {
       // No center aircraft available, skip rendering
       this.debugInfo.create(container, this.aircraft, this.nodeId);
-      this.networkMembersTable.create(container);
-
-      // Update network members table with current data
-      const networkMembers = this.udpNodesManager.getNetworkMembers();
-      this.networkMembersTable.update(networkMembers);
       return;
     }
 
@@ -474,6 +499,11 @@ class TacticalDisplayClient {
       `🎨 Rendering ${this.aircraft.size} aircraft (center: ${centerAircraft.callSign})`
     );
     this.aircraft.forEach((aircraft, id) => {
+      // In 102 screen (self-only view), show only the centered self node
+      if (this.viewMode === "self-only") {
+        return;
+      }
+
       console.log(
         `🎨 Processing aircraft: ${aircraft.callSign} (${aircraft.aircraftType})`
       );
@@ -529,34 +559,252 @@ class TacticalDisplayClient {
 
     this.debugInfo.create(container, this.aircraft, this.nodeId);
 
-    // Update network members table with current data
-    const networkMembers = this.udpNodesManager.getNetworkMembers();
-    this.networkMembersTable.update(networkMembers);
+    // 103 screen: show detailed network node info (same fields as green-node dialog)
+    const existingDetailsPanel = document.getElementById(
+      "network-details-panel"
+    );
+    if (existingDetailsPanel) {
+      existingDetailsPanel.remove();
+    }
+
+    if (this.viewMode === "network-103") {
+      const panel = document.createElement("div");
+      panel.id = "network-details-panel";
+      panel.style.cssText = `
+        position: fixed;
+        left: 10px;
+        bottom: 10px;
+        width: 360px;
+        max-height: 60vh;
+        background: rgba(0, 0, 0, 0.9);
+        border: 2px solid #00ff00;
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: #ffffff;
+        font-family: monospace;
+        font-size: 11px;
+        z-index: 150;
+        box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        overflow-y: auto;
+      `;
+
+      const header = document.createElement("div");
+      header.textContent = "NETWORK NODES (103)";
+      header.style.cssText = `
+        font-weight: bold;
+        font-size: 13px;
+        margin-bottom: 8px;
+        text-align: center;
+        color: #00ff00;
+        border-bottom: 1px solid #00ff00;
+        padding-bottom: 4px;
+      `;
+      panel.appendChild(header);
+
+      if (networkMembers.length === 0) {
+        const empty = document.createElement("div");
+        empty.textContent = "No network nodes available";
+        empty.style.cssText = `
+          text-align: center;
+          color: #cccccc;
+          margin-top: 8px;
+        `;
+        panel.appendChild(empty);
+      } else {
+        networkMembers.forEach((node: UDPDataPoint) => {
+          const callsign = node.callsign || "N/A";
+          const isMotherAc =
+            node.internalData && node.internalData.isMotherAc === 1;
+          const metadata = node.regionalData?.metadata || {};
+          const baroAltitude =
+            metadata.baroAltitude !== undefined ? metadata.baroAltitude : NaN;
+          const groundSpeed =
+            metadata.groundSpeed !== undefined ? metadata.groundSpeed : NaN;
+          const mach = metadata.mach !== undefined ? metadata.mach : NaN;
+
+          const baroAltitudeDisplay = isNaN(baroAltitude)
+            ? "NaN"
+            : `${baroAltitude} ft`;
+          const groundSpeedDisplay = isNaN(groundSpeed)
+            ? "NaN"
+            : `${groundSpeed} kt`;
+          const machDisplay = isNaN(mach) ? "NaN" : `${mach}`;
+
+          const nodeBlock = document.createElement("div");
+          nodeBlock.style.cssText = `
+            border: 1px solid rgba(0, 255, 0, 0.4);
+            border-radius: 6px;
+            padding: 6px 8px;
+            margin-bottom: 6px;
+            background: rgba(0, 0, 0, 0.7);
+          `;
+
+          nodeBlock.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span style="color: #00ff00; font-weight: bold;">GID: ${
+                node.globalId ?? "N/A"
+              }</span>
+              <span style="color: ${
+                isMotherAc ? "#ffaa00" : "#cccccc"
+              }; font-size: 10px;">
+                ${isMotherAc ? "✈ MOTHER" : ""}
+              </span>
+            </div>
+            <div style="margin-bottom: 4px;">
+              <span style="color: #00ff00;">CALLSIGN:</span>
+              <span style="margin-left: 4px;">${callsign}</span>
+            </div>
+            <div style="margin-bottom: 4px; color: #cccccc;">
+              <div>Lat: ${node.latitude?.toFixed(6) ?? "N/A"}°</div>
+              <div>Lng: ${node.longitude?.toFixed(6) ?? "N/A"}°</div>
+              ${
+                node.altitude !== undefined
+                  ? `<div>Alt: ${node.altitude} ft</div>`
+                  : ""
+              }
+            </div>
+            <div style="color: #cccccc; font-size: 10px;">
+              <div><span style="color:#00ff00;">Baro Alt:</span> ${baroAltitudeDisplay}</div>
+              <div><span style="color:#00ff00;">GS:</span> ${groundSpeedDisplay}</div>
+              <div><span style="color:#00ff00;">Mach:</span> ${machDisplay}</div>
+            </div>
+          `;
+
+          panel.appendChild(nodeBlock);
+        });
+      }
+
+      container.appendChild(panel);
+    }
+
+    // 104 screen: show detailed engagements info (no dialogs/tooltips)
+    const existingEngPanel = document.getElementById(
+      "engagement-details-panel"
+    );
+    if (existingEngPanel) {
+      existingEngPanel.remove();
+    }
+
+    if (this.viewMode === "engagement-104") {
+      const engagements = this.engagementManager.getEngagements();
+      const allNodesMap = this.udpNodesManager.getAllNodesMap();
+
+      const panel = document.createElement("div");
+      panel.id = "engagement-details-panel";
+      panel.style.cssText = `
+        position: fixed;
+        right: 10px;
+        bottom: 10px;
+        width: 380px;
+        max-height: 60vh;
+        background: rgba(0, 0, 0, 0.9);
+        border: 2px solid #ff4444;
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: #ffffff;
+        font-family: monospace;
+        font-size: 11px;
+        z-index: 150;
+        box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+        overflow-y: auto;
+      `;
+
+      const header = document.createElement("div");
+      header.textContent = "ENGAGEMENTS (104)";
+      header.style.cssText = `
+        font-weight: bold;
+        font-size: 13px;
+        margin-bottom: 8px;
+        text-align: center;
+        color: #ff4444;
+        border-bottom: 1px solid #ff4444;
+        padding-bottom: 4px;
+      `;
+      panel.appendChild(header);
+
+      if (engagements.length === 0) {
+        const empty = document.createElement("div");
+        empty.textContent = "No active engagements";
+        empty.style.cssText = `
+          text-align: center;
+          color: #cccccc;
+          margin-top: 8px;
+        `;
+        panel.appendChild(empty);
+      } else {
+        engagements.forEach((eng) => {
+          const attacker = allNodesMap.get(eng.globalId);
+          const target = allNodesMap.get(eng.engagementTargetGid);
+
+          const attackerCallsign =
+            attacker?.callsign || `ID${eng.globalId ?? "N/A"}`;
+          const targetCallsign =
+            target?.callsign || `ID${eng.engagementTargetGid ?? "N/A"}`;
+
+          const block = document.createElement("div");
+          block.style.cssText = `
+            border: 1px solid rgba(255, 68, 68, 0.6);
+            border-radius: 6px;
+            padding: 6px 8px;
+            margin-bottom: 6px;
+            background: rgba(30, 0, 0, 0.7);
+          `;
+
+          block.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <span style="color:#ffaa00;font-weight:bold;">${attackerCallsign}</span>
+              <span style="color:#ff4444;font-weight:bold;">→</span>
+              <span style="color:#ff6666;font-weight:bold;">${targetCallsign}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;color:#cccccc;margin-bottom:4px;">
+              <div>Weapon: <span style="color:${
+                eng.weaponLaunch ? "#00ff00" : "#888888"
+              };">${eng.weaponLaunch ? "LAUNCHED" : "READY"}</span></div>
+              <div>Hang Fire: <span style="color:${
+                eng.hangFire ? "#ff4444" : "#888888"
+              };">${eng.hangFire ? "YES" : "NO"}</span></div>
+              <div>TTH: <span style="color:#ffff00;">${eng.tth}s</span></div>
+              <div>TTA: <span style="color:#ffff00;">${eng.tta}s</span></div>
+            </div>
+            <div style="font-size:10px;color:#aaaaaa;border-top:1px solid rgba(255,255,255,0.1);padding-top:4px;">
+              Ranges: dMax1=${
+                isNaN(eng.dMax1) ? "N/A" : eng.dMax1.toFixed(2)
+              } nm, dMax2=${
+                isNaN(eng.dMax2) ? "N/A" : eng.dMax2.toFixed(2)
+              } nm, dmin=${
+                isNaN(eng.dmin) ? "N/A" : eng.dmin.toFixed(2)
+              } nm
+            </div>
+          `;
+
+          panel.appendChild(block);
+        });
+      }
+
+      container.appendChild(panel);
+    }
 
     this.checkWarnings();
-
-    if (this.threatDialog.isVisible()) {
-      this.threatDialog.create();
-      let centerAircraft: Aircraft | null = null;
-      if (this.aircraft.size > 0) {
-        const aircraftArray = Array.from(this.aircraft.values());
-        if (this.centerMode === "mother") {
-          centerAircraft =
-            aircraftArray.find((a) => a.aircraftType === "mother") ||
-            aircraftArray[0];
-        } else {
-          centerAircraft = this.aircraft.get(this.nodeId) || aircraftArray[0];
-        }
-      }
-      if (centerAircraft) {
-        const nearestThreats = this.getNearestThreats(centerAircraft, 5);
-        this.threatDialog.update(nearestThreats);
-      }
-    }
   }
 
-  private setViewMode(mode: "normal" | "self-only") {
+  private setViewMode(
+    mode: "normal" | "self-only" | "network-103" | "engagement-104"
+  ) {
     this.viewMode = mode;
+
+    // Disable UDP node dialogs on all screens
+    this.udpNodesManager.setDialogsEnabled(false);
+
+    // Enable radar circles only in 101 screen; hide them in 102/103
+    this.udpNodesManager.setRadarCirclesEnabled(this.viewMode === "normal");
+
+    // Show UDP nodes/lines only in 101; hide them in 102 and 103
+    this.udpNodesManager.setNodesVisible(this.viewMode === "normal");
+
+    // Center logic:
+    // 101 screen centered on mother, 102 & 103 screens centered on self
+    this.centerMode =
+      this.viewMode === "normal" ? "mother" : ("self" as "self");
 
     this.updateUI();
 
@@ -566,12 +814,25 @@ class TacticalDisplayClient {
     const button102 = document.querySelector(
       'button[data-view-mode="102"]'
     ) as HTMLElement;
+    const button103 = document.querySelector(
+      'button[data-view-mode="103"]'
+    ) as HTMLElement;
+    const button104 = document.querySelector(
+      'button[data-view-mode="104"]'
+    ) as HTMLElement;
 
     if (button101) {
       button101.style.background = mode === "normal" ? "#44ff44" : "#333";
     }
     if (button102) {
       button102.style.background = mode === "self-only" ? "#ff8844" : "#333";
+    }
+    if (button103) {
+      button103.style.background = mode === "network-103" ? "#00c4ff" : "#333";
+    }
+    if (button104) {
+      button104.style.background =
+        mode === "engagement-104" ? "#ff4dff" : "#333";
     }
   }
 
@@ -706,137 +967,8 @@ class TacticalDisplayClient {
   }
 
   private showAircraftDetails(aircraft: Aircraft) {
-    const details = document.createElement("div");
-    details.style.cssText = `
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: #222;
-      border: 2px solid #555;
-      border-radius: 10px;
-      padding: 20px;
-      color: white;
-      font-family: monospace;
-      z-index: 1000;
-      min-width: 350px;
-    `;
-
-    const typeColor =
-      aircraft.aircraftType === "threat"
-        ? "#ff4444"
-        : aircraft.aircraftType === "mother"
-          ? "#4488ff"
-          : aircraft.aircraftType === "self"
-            ? "#FFD700"
-            : "#44ff44";
-
-    const totalDistance = aircraft.totalDistanceCovered || 0;
-    const distanceMach = aircraft.speed / 661.5;
-
-    const threatActions =
-      aircraft.aircraftType === "threat"
-        ? `
-      <hr style="border: 1px solid #555; margin: 15px 0;">
-      <div style="background: rgba(255, 68, 68, 0.2); padding: 10px; border-radius: 5px; border: 1px solid #ff4444;">
-        <div style="color: #ff4444; font-weight: bold; margin-bottom: 10px;">⚠️ THREAT ACTIONS</div>
-        <div style="display: flex; gap: 10px;">
-          <button id="lock-threat-btn" style="
-            background: #ff8800;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-            flex: 1;
-            transition: all 0.3s;
-          ">🎯 LOCK TARGET</button>
-          <button id="execute-threat-btn" style="
-            background: #ff0000;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-            flex: 1;
-            transition: all 0.3s;
-          ">💥 EXECUTE</button>
-        </div>
-      </div>
-    `
-        : "";
-
-    details.innerHTML = `
-      <h3 style="margin-top: 0; color: ${typeColor};">Aircraft Details</h3>
-      <div><strong>Call Sign:</strong> ${aircraft.callSign}</div>
-      <div><strong>Type:</strong> <span style="color: ${typeColor}">${aircraft.aircraftType.toUpperCase()}</span></div>
-      <div><strong>Status:</strong> <span style="color: ${aircraft.status === "connected" ? "#4CAF50" : "#F44336"}">${aircraft.status.toUpperCase()}</span></div>
-      <div><strong>Aircraft:</strong> ${aircraft.info}</div>
-      <hr style="border: 1px solid #555; margin: 15px 0;">
-      <div><strong>Position:</strong></div>
-      <div style="margin-left: 20px;">Latitude: ${aircraft.lat.toFixed(6)}</div>
-      <div style="margin-left: 20px;">Longitude: ${aircraft.lng.toFixed(6)}</div>
-      <div><strong>Altitude:</strong> ${aircraft.altitude.toLocaleString()} ft</div>
-      <div><strong>Heading:</strong> ${aircraft.heading}°</div>
-      <div><strong>Speed:</strong> ${aircraft.speed} kts (Mach ${distanceMach.toFixed(2)})</div>
-      <hr style="border: 1px solid #555; margin: 15px 0;">
-      <div><strong style="color: #ffaa00;">Total Distance Covered:</strong></div>
-      <div style="margin-left: 20px; color: #ffaa00; font-size: 16px; font-weight: bold;">
-        ${totalDistance.toFixed(2)} NM
-      </div>
-      <div style="margin-left: 20px; color: #aaa; font-size: 12px;">
-        (${(totalDistance * 1.151).toFixed(2)} miles / ${(totalDistance * 1.852).toFixed(2)} km)
-      </div>
-      ${threatActions}
-      <button onclick="this.parentElement.remove()" style="
-        background: #555;
-        color: white;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 4px;
-        cursor: pointer;
-        margin-top: 15px;
-      ">Close</button>
-    `;
-
-    document.body.appendChild(details);
-
-    if (aircraft.aircraftType === "threat") {
-      const lockBtn = document.getElementById("lock-threat-btn");
-      const executeBtn = document.getElementById("execute-threat-btn");
-
-      if (lockBtn) {
-        lockBtn.addEventListener("mouseenter", () => {
-          lockBtn.style.background = "#ffaa00";
-          lockBtn.style.transform = "scale(1.05)";
-        });
-        lockBtn.addEventListener("mouseleave", () => {
-          lockBtn.style.background = "#ff8800";
-          lockBtn.style.transform = "scale(1)";
-        });
-        lockBtn.addEventListener("click", () => {
-          this.lockThreat(aircraft);
-          details.remove();
-        });
-      }
-
-      if (executeBtn) {
-        executeBtn.addEventListener("mouseenter", () => {
-          executeBtn.style.background = "#ff3333";
-          executeBtn.style.transform = "scale(1.05)";
-        });
-        executeBtn.addEventListener("mouseleave", () => {
-          executeBtn.style.background = "#ff0000";
-          executeBtn.style.transform = "scale(1)";
-        });
-        executeBtn.addEventListener("click", () => {
-          this.executeThreat(aircraft);
-          details.remove();
-        });
-      }
-    }
+    // Aircraft details dialog is disabled globally; no-op.
+    return;
   }
 
   private lockThreat(aircraft: Aircraft) {
