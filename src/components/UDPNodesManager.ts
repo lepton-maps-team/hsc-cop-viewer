@@ -30,6 +30,7 @@ export class UDPNodesManager {
   private dialogsEnabled: boolean = false; // Control whether red/green dialogs can be shown
   private radarCirclesEnabled: boolean = true; // Control whether radar circles are rendered
   private nodesVisible: boolean = true; // Control whether UDP nodes/lines are rendered
+  private showOnlyMotherAircraft: boolean = false; // For 102 screen - show only mother aircraft or globalId 10
 
   constructor(mapManager: MapManager | null = null) {
     this.mapManager = mapManager;
@@ -81,6 +82,48 @@ export class UDPNodesManager {
       if (this.connectionLinesContainer) {
         this.connectionLinesContainer.innerHTML = "";
       }
+    }
+  }
+
+  /**
+   * Set whether to show only mother aircraft (or globalId 10 if no mother aircraft) - for 102 screen
+   */
+  setShowOnlyMotherAircraft(showOnly: boolean): void {
+    this.showOnlyMotherAircraft = showOnly;
+    if (this.mapManager && this.udpDotsContainer) {
+      this.updateUDPDots();
+      // Center on mother aircraft or globalId 10
+      if (showOnly) {
+        this.centerOnMotherOrGlobalId10();
+      }
+    }
+  }
+
+  /**
+   * Center map on mother aircraft, or globalId 10 if no mother aircraft
+   */
+  private centerOnMotherOrGlobalId10(): void {
+    if (!this.mapManager) return;
+
+    const allNodes = Array.from(this.udpDataPoints.values());
+
+    // First, try to find mother aircraft
+    const motherAircraft = allNodes.find(
+      (node) => node.internalData && node.internalData.isMotherAc === 1
+    );
+
+    const targetNode = motherAircraft || this.udpDataPoints.get(10);
+
+    if (targetNode) {
+      const targetZoom = this.calculateZoomToFitNodes(targetNode);
+      this.mapManager.updateCenter(
+        targetNode.latitude,
+        targetNode.longitude,
+        targetZoom
+      );
+      console.log(
+        `🎯 Centered 102 screen on ${motherAircraft ? "mother aircraft" : "globalId 10"}: (${targetNode.latitude.toFixed(4)}, ${targetNode.longitude.toFixed(4)})`
+      );
     }
   }
 
@@ -776,6 +819,16 @@ export class UDPNodesManager {
 
     // Render symbols for all stored data points
     this.udpDataPoints.forEach((point, globalId) => {
+      // Filter: if showOnlyMotherAircraft is true, only show mother aircraft or globalId 10
+      if (this.showOnlyMotherAircraft) {
+        const isMotherAc =
+          point.internalData && point.internalData.isMotherAc === 1;
+        const isGlobalId10 = globalId === 10;
+        if (!isMotherAc && !isGlobalId10) {
+          return; // Skip this node
+        }
+      }
+
       const lat = point.latitude;
       const lng = point.longitude;
 

@@ -834,6 +834,14 @@ class TacticalDisplayClient {
     const display = document.getElementById("map-center-display");
     if (!display || !this.mapManager) return;
 
+    // Hide map center display in 102 screen
+    if (this.viewMode === "self-only") {
+      display.style.display = "none";
+      return;
+    } else {
+      display.style.display = "block";
+    }
+
     const center = this.mapManager.getCenter();
     if (center) {
       display.innerHTML = `
@@ -862,13 +870,24 @@ class TacticalDisplayClient {
     // Enable radar circles only in 101 screen; hide them in 102/103
     this.udpNodesManager.setRadarCirclesEnabled(this.viewMode === "normal");
 
-    // Show UDP nodes/lines only in 101; hide them in 102 and 103
-    this.udpNodesManager.setNodesVisible(this.viewMode === "normal");
+    // Show UDP nodes/lines: in 101 show all, in 102 show only mother aircraft (or globalId 10)
+    if (this.viewMode === "normal") {
+      this.udpNodesManager.setNodesVisible(true);
+      this.udpNodesManager.setShowOnlyMotherAircraft(false);
+    } else if (this.viewMode === "self-only") {
+      // 102 screen: show only mother aircraft (or globalId 10)
+      this.udpNodesManager.setNodesVisible(true);
+      this.udpNodesManager.setShowOnlyMotherAircraft(true);
+    } else {
+      // 103 and 104 screens: hide nodes
+      this.udpNodesManager.setNodesVisible(false);
+      this.udpNodesManager.setShowOnlyMotherAircraft(false);
+    }
 
     // Center logic:
-    // 101 screen centered on mother, 102 & 103 screens centered on self
+    // 101 screen centered on mother, 102 centered on mother/globalId10, 103 & 104 screens centered on self
     this.centerMode =
-      this.viewMode === "normal" ? "mother" : ("self" as "self");
+      this.viewMode === "normal" || this.viewMode === "self-only" ? "mother" : ("self" as "self");
 
     this.updateUI();
 
