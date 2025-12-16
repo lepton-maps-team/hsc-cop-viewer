@@ -9,6 +9,8 @@ import { AircraftRenderer } from "./components/AircraftRenderer";
 import { UDPNodesManager, UDPDataPoint } from "./components/UDPNodesManager";
 import { NetworkMembersTable } from "./components/NetworkMembersTable";
 import { EngagementManager } from "./components/EngagementManager";
+import { EngagementDisplay } from "./components/EngagementDisplay";
+import { Screen104Display } from "./components/Screen104Display";
 import { GeoMessageManager } from "./components/GeoMessageManager";
 
 class TacticalDisplayClient {
@@ -32,6 +34,8 @@ class TacticalDisplayClient {
   private aircraftRenderer: AircraftRenderer;
   private networkMembersTable: NetworkMembersTable;
   private engagementManager: EngagementManager;
+  private engagementDisplay: EngagementDisplay;
+  private screen104Display: Screen104Display;
   private geoMessageManager: GeoMessageManager;
   private simulationSystem: {
     isRunning: boolean;
@@ -84,10 +88,12 @@ class TacticalDisplayClient {
     );
     this.networkMembersTable = new NetworkMembersTable();
     this.engagementManager = new EngagementManager(this.mapManager);
+    this.engagementDisplay = new EngagementDisplay();
+    this.screen104Display = new Screen104Display();
     this.geoMessageManager = new GeoMessageManager(this.mapManager);
 
     this.initialize();
-    
+
     // Enable dialogs for network nodes on initialization (101 screen is default)
     this.udpNodesManager.setDialogsEnabled(true);
   }
@@ -143,6 +149,17 @@ class TacticalDisplayClient {
             this.udpNodesManager.getAllNodesMap()
           );
           this.engagementManager.updateEngagements(engagementData as any);
+
+          // Update 104 screen display ONLY if in 104 mode
+          if (this.viewMode === "engagement-104") {
+            const engagements = this.engagementManager.getEngagements();
+            const allNodesMap = this.udpNodesManager.getAllNodesMap();
+            // Only update if display exists
+            const display = document.getElementById("screen-104-display");
+            if (display) {
+              this.screen104Display.update(engagements, allNodesMap);
+            }
+          }
         }
 
         // Handle opcode 122 geo-referenced messages
@@ -426,7 +443,7 @@ class TacticalDisplayClient {
         this.udpNodesManager.updateUDPDots();
         this.udpNodesManager.updateConnectionLines();
         this.engagementManager.updateLines();
-        
+
         // If in 102 screen, ensure compass is created and node is visible
         if (this.viewMode === "self-only") {
           setTimeout(() => {
@@ -702,111 +719,109 @@ class TacticalDisplayClient {
       container.appendChild(panel);
     }
 
-    // 104 screen: show detailed engagements info (no dialogs/tooltips)
-    const existingEngPanel = document.getElementById(
-      "engagement-details-panel"
-    );
-    if (existingEngPanel) {
-      existingEngPanel.remove();
-    }
-
+    // 104 screen: show opcode 103 engagement data using dedicated component
     if (this.viewMode === "engagement-104") {
+      console.log("🎯🎯🎯 104 SCREEN MODE DETECTED - Creating display NOW!");
+      console.log("🎯 screen104Display exists:", !!this.screen104Display);
+      console.log("🎯 document.body exists:", !!document.body);
+      console.log("🎯 Current view mode:", this.viewMode);
+
       const engagements = this.engagementManager.getEngagements();
       const allNodesMap = this.udpNodesManager.getAllNodesMap();
 
-      const panel = document.createElement("div");
-      panel.id = "engagement-details-panel";
-      panel.style.cssText = `
-        position: fixed;
-        right: 10px;
-        bottom: 10px;
-        width: 380px;
-        max-height: 60vh;
-        background: rgba(0, 0, 0, 0.9);
-        border: 2px solid #ff4444;
-        border-radius: 8px;
-        padding: 10px 12px;
-        color: #ffffff;
-        font-family: monospace;
-        font-size: 11px;
-        z-index: 150;
-        box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
-        overflow-y: auto;
-      `;
+      console.log("🎯 104 Screen: Creating Screen104Display", {
+        engagementsCount: engagements.length,
+        nodesMapSize: allNodesMap.size,
+        viewMode: this.viewMode,
+        screen104DisplayExists: !!this.screen104Display,
+      });
+      console.log("🎯 Engagement data:", engagements);
 
-      const header = document.createElement("div");
-      header.textContent = "ENGAGEMENTS (104)";
-      header.style.cssText = `
-        font-weight: bold;
-        font-size: 13px;
-        margin-bottom: 8px;
-        text-align: center;
-        color: #ff4444;
-        border-bottom: 1px solid #ff4444;
-        padding-bottom: 4px;
-      `;
-      panel.appendChild(header);
-
-      if (engagements.length === 0) {
-        const empty = document.createElement("div");
-        empty.textContent = "No active engagements";
-        empty.style.cssText = `
-          text-align: center;
-          color: #cccccc;
-          margin-top: 8px;
-        `;
-        panel.appendChild(empty);
-      } else {
-        engagements.forEach((eng) => {
-          const attacker = allNodesMap.get(eng.globalId);
-          const target = allNodesMap.get(eng.engagementTargetGid);
-
-          const attackerCallsign =
-            attacker?.callsign || `ID${eng.globalId ?? "N/A"}`;
-          const targetCallsign =
-            target?.callsign || `ID${eng.engagementTargetGid ?? "N/A"}`;
-
-          const block = document.createElement("div");
-          block.style.cssText = `
-            border: 1px solid rgba(255, 68, 68, 0.6);
-            border-radius: 6px;
-            padding: 6px 8px;
-            margin-bottom: 6px;
-            background: rgba(30, 0, 0, 0.7);
-          `;
-
-          block.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-              <span style="color:#ffaa00;font-weight:bold;">${attackerCallsign}</span>
-              <span style="color:#ff4444;font-weight:bold;">→</span>
-              <span style="color:#ff6666;font-weight:bold;">${targetCallsign}</span>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;color:#cccccc;margin-bottom:4px;">
-              <div>Weapon: <span style="color:${
-                eng.weaponLaunch ? "#00ff00" : "#888888"
-              };">${eng.weaponLaunch ? "LAUNCHED" : "READY"}</span></div>
-              <div>Hang Fire: <span style="color:${
-                eng.hangFire ? "#ff4444" : "#888888"
-              };">${eng.hangFire ? "YES" : "NO"}</span></div>
-              <div>TTH: <span style="color:#ffff00;">${eng.tth}s</span></div>
-              <div>TTA: <span style="color:#ffff00;">${eng.tta}s</span></div>
-            </div>
-            <div style="font-size:10px;color:#aaaaaa;border-top:1px solid rgba(255,255,255,0.1);padding-top:4px;">
-              Ranges: dMax1=${
-                isNaN(eng.dMax1) ? "N/A" : eng.dMax1.toFixed(2)
-              } nm, dMax2=${
-                isNaN(eng.dMax2) ? "N/A" : eng.dMax2.toFixed(2)
-              } nm, dmin=${
-                isNaN(eng.dmin) ? "N/A" : eng.dmin.toFixed(2)
-              } nm
-            </div>
-          `;
-
-          panel.appendChild(block);
-        });
+      // Create the 104 screen display - FORCE IT
+      if (!this.screen104Display) {
+        console.error("❌ screen104Display is NULL! Recreating...");
+        this.screen104Display = new Screen104Display();
       }
 
-      container.appendChild(panel);
+      try {
+        console.log("🎯 Calling screen104Display.create()...");
+        this.screen104Display.create();
+        console.log("✅✅✅ Screen104Display.create() completed!");
+
+        // Hide map and other elements that might cover the display
+        const visualizationArea = document.getElementById("visualization-area");
+        if (visualizationArea) {
+          console.log("🗑️ Hiding visualization area for 104 screen");
+          visualizationArea.style.opacity = "0.05";
+          visualizationArea.style.pointerEvents = "none";
+        }
+
+        // Force immediate update
+        console.log("🎯 Calling screen104Display.update() immediately...");
+        this.screen104Display.update(engagements, allNodesMap);
+        console.log("✅✅✅ Screen104Display.update() completed!");
+
+        // Verify it's in DOM
+        setTimeout(() => {
+          const display = document.getElementById("screen-104-display");
+          if (display) {
+            const rect = display.getBoundingClientRect();
+            console.log("✅✅✅ Display FOUND in DOM:", {
+              id: display.id,
+              offsetWidth: display.offsetWidth,
+              offsetHeight: display.offsetHeight,
+              top: rect.top,
+              left: rect.left,
+              zIndex: window.getComputedStyle(display).zIndex,
+              display: window.getComputedStyle(display).display,
+              visibility: window.getComputedStyle(display).visibility,
+              opacity: window.getComputedStyle(display).opacity,
+            });
+
+            // Log all elements with high z-index that might be covering it
+            const allElements = Array.from(
+              document.body.getElementsByTagName("*")
+            );
+            const highZElements = allElements.filter((el) => {
+              const zIndex = parseInt(
+                window.getComputedStyle(el as HTMLElement).zIndex
+              );
+              return !isNaN(zIndex) && zIndex > 10000;
+            });
+            console.log(
+              "🔍 Elements with z-index > 10000:",
+              highZElements.map((el) => ({
+                tag: el.tagName,
+                id: el.id,
+                zIndex: window.getComputedStyle(el as HTMLElement).zIndex,
+              }))
+            );
+          } else {
+            console.error("❌❌❌ Display NOT FOUND in DOM after creation!");
+          }
+
+          // Update again after delay
+          this.screen104Display.update(engagements, allNodesMap);
+        }, 300);
+      } catch (error) {
+        console.error(
+          "❌❌❌ CRITICAL ERROR creating Screen104Display:",
+          error
+        );
+        console.error("Error stack:", (error as Error).stack);
+      }
+    } else {
+      // Remove 104 screen display when not in 104 mode
+      console.log("🗑️ Not in 104 mode, destroying display");
+      if (this.screen104Display) {
+        this.screen104Display.destroy();
+      }
+      // Restore visualization area opacity when leaving 104 mode
+      const visualizationArea = document.getElementById("visualization-area");
+      if (visualizationArea) {
+        visualizationArea.style.opacity = "1";
+        visualizationArea.style.pointerEvents = "auto";
+      }
     }
 
     this.checkWarnings();
@@ -872,7 +887,16 @@ class TacticalDisplayClient {
   private setViewMode(
     mode: "normal" | "self-only" | "network-103" | "engagement-104"
   ) {
+    const previousMode = this.viewMode;
     this.viewMode = mode;
+
+    console.log("🔄 setViewMode called:", {
+      previousMode,
+      newMode: mode,
+      isSwitchingTo104: mode === "engagement-104",
+      isSwitchingAwayFrom104:
+        previousMode === "engagement-104" && mode !== "engagement-104",
+    });
 
     // Enable dialogs for network nodes (green nodes) on all screens
     this.udpNodesManager.setDialogsEnabled(true);
@@ -897,7 +921,30 @@ class TacticalDisplayClient {
     // Center logic:
     // 101 screen centered on mother, 102 centered on mother/globalId10, 103 & 104 screens centered on self
     this.centerMode =
-      this.viewMode === "normal" || this.viewMode === "self-only" ? "mother" : ("self" as "self");
+      this.viewMode === "normal" || this.viewMode === "self-only"
+        ? "mother"
+        : ("self" as "self");
+
+    // Hide map in 104 screen (show only engagement display)
+    if (this.mapManager) {
+      const mapElement = document.getElementById("map-background");
+      if (mapElement) {
+        if (mode === "engagement-104") {
+          mapElement.style.opacity = "0.1"; // Dim the map
+        } else {
+          mapElement.style.opacity = "1"; // Show map normally
+        }
+      }
+    }
+
+    // IMPORTANT: Destroy 104 screen display ONLY if switching AWAY from 104 mode
+    // previousMode was 104, but new mode is NOT 104
+    if (previousMode === "engagement-104" && mode !== "engagement-104") {
+      console.log(
+        "🗑️ Switching away from 104 mode, destroying Screen104Display"
+      );
+      this.screen104Display.destroy();
+    }
 
     this.updateUI();
 
