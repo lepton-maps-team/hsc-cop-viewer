@@ -190,68 +190,47 @@ export class UDPNodesManager {
     // Update or add data points
     data.forEach((point) => {
       if (point.globalId !== undefined) {
-        // For opcode 102 (network member data), merge with existing node if it exists
-        // This allows opcode 102 data (callsign, isMotherAc, etc.) to be merged with opcode 101 position data
+        // For opcode 102 (network member data), just set the metadata for the globalId
         if (point.opcode === 102) {
+          // Ensure we have a valid globalId
+          if (point.globalId === undefined || point.globalId === null) {
+            console.warn(`⚠️ Opcode 102 point missing globalId:`, point);
+            return;
+          }
+
           const existingNode = this.udpDataPoints.get(point.globalId);
           if (existingNode) {
-            // Merge opcode 102 data with existing node (preserve position from opcode 101)
-            // Deep merge nested objects to preserve all opcode 102 data
-            const mergedNode = {
-              ...existingNode,
-              ...point,
-              // Preserve position from existing node (opcode 101)
-              latitude: existingNode.latitude,
-              longitude: existingNode.longitude,
-              altitude:
-                point.altitude !== undefined
-                  ? point.altitude
-                  : existingNode.altitude,
-              // Preserve callsign from opcode 102
-              callsign: point.callsign || existingNode.callsign,
-              // Deep merge nested objects
-              internalData: point.internalData
-                ? {
-                    ...existingNode.internalData,
-                    ...point.internalData,
-                  }
-                : existingNode.internalData,
-              regionalData: point.regionalData
-                ? {
-                    ...existingNode.regionalData,
-                    ...point.regionalData,
-                    // Deep merge metadata within regionalData
-                    metadata: {
-                      ...existingNode.regionalData?.metadata,
-                      ...point.regionalData?.metadata,
-                    },
-                  }
-                : existingNode.regionalData,
-              battleGroupData: point.battleGroupData
-                ? {
-                    ...existingNode.battleGroupData,
-                    ...point.battleGroupData,
-                  }
-                : existingNode.battleGroupData,
-              radioData: point.radioData
-                ? {
-                    ...existingNode.radioData,
-                    ...point.radioData,
-                  }
-                : existingNode.radioData,
-              opcode: existingNode.opcode || 101, // Keep original opcode (usually 101 for green nodes)
-            };
-            this.udpDataPoints.set(point.globalId, mergedNode);
+            // Just set the metadata directly - don't merge anything else
+            if (point.regionalData?.metadata) {
+              existingNode.regionalData = existingNode.regionalData || {};
+              existingNode.regionalData.metadata = point.regionalData.metadata;
+            }
+            // Also set callsign and internalData if they exist
+            if (point.callsign) {
+              existingNode.callsign = point.callsign;
+            }
+            if (point.internalData) {
+              existingNode.internalData = {
+                ...existingNode.internalData,
+                ...point.internalData,
+              };
+            }
+            this.udpDataPoints.set(point.globalId, existingNode);
             console.log(
-              `📍 Merged opcode 102 data with node ${point.globalId}: callsign=${mergedNode.callsign || "N/A"}, isMotherAc=${mergedNode.internalData?.isMotherAc || 0}, hasMetadata=${!!mergedNode.regionalData?.metadata}, metadataKeys=${mergedNode.regionalData?.metadata ? Object.keys(mergedNode.regionalData.metadata).join(",") : "none"}`
+              `📊 Set metadata for opcode 102 (globalId ${point.globalId}):`,
+              {
+                globalId: point.globalId,
+                metadata: existingNode.regionalData?.metadata,
+                baroAltitude: existingNode.regionalData?.metadata?.baroAltitude,
+                groundSpeed: existingNode.regionalData?.metadata?.groundSpeed,
+                mach: existingNode.regionalData?.metadata?.mach,
+              }
             );
           } else {
-            // Opcode 102 data without existing node - store it anyway (might get position later from opcode 101)
-            // But we need at least some identifier, so store it with a flag
+            // Opcode 102 data without existing node - store it temporarily
             console.log(
-              `⚠️ Opcode 102 data for globalId ${point.globalId} but no existing node found. Waiting for opcode 101 position data.`
+              `⚠️ Opcode 102 data for globalId ${point.globalId} but no existing node found. Storing metadata.`
             );
-            // Store it temporarily - it will be merged when opcode 101 arrives
             this.udpDataPoints.set(point.globalId, {
               ...point,
               opcode: 101, // Mark as green node type
@@ -316,16 +295,47 @@ export class UDPNodesManager {
             console.log(
               `📍 Merged position data (opcode ${point.opcode}) with opcode 102 metadata for node ${point.globalId}: callsign=${existingNode.callsign || "N/A"}, hasMetadata=${!!existingNode.regionalData?.metadata}`
             );
+            const mergedNode = this.udpDataPoints.get(point.globalId);
+            if (mergedNode) {
+              console.log(
+                "📊 Metadata after merge (opcode 101/104 with 102):",
+                {
+                  globalId: point.globalId,
+                  hasRegionalData: !!mergedNode.regionalData,
+                  hasMetadata: !!mergedNode.regionalData?.metadata,
+                  metadata: mergedNode.regionalData?.metadata,
+                  baroAltitude: mergedNode.regionalData?.metadata?.baroAltitude,
+                  groundSpeed: mergedNode.regionalData?.metadata?.groundSpeed,
+                  mach: mergedNode.regionalData?.metadata?.mach,
+                }
+              );
+            }
           } else {
             // Normal update/add for opcodes 101, 104
-            // Coordinates are already converted in main.ts, use them directly
-            // Update or add the point (preserve opcode if present)
-            this.udpDataPoints.set(point.globalId, {
-              ...point,
-              latitude: point.latitude,
-              longitude: point.longitude,
-              opcode: point.opcode, // Preserve opcode (101 or 104)
-            });
+            // BUT: Check if there's existing metadata from opcode 102 that we need to preserve
+            const existingNode = this.udpDataPoints.get(point.globalId);
+            if (existingNode && existingNode.regionalData?.metadata) {
+              // Preserve existing metadata when updating position
+              this.udpDataPoints.set(point.globalId, {
+                ...existingNode,
+                ...point,
+                latitude: point.latitude,
+                longitude: point.longitude,
+                // Preserve regionalData with metadata
+                regionalData: existingNode.regionalData,
+                opcode: point.opcode, // Preserve opcode (101 or 104)
+              });
+            } else {
+              // Normal update/add for opcodes 101, 104
+              // Coordinates are already converted in main.ts, use them directly
+              // Update or add the point (preserve opcode if present)
+              this.udpDataPoints.set(point.globalId, {
+                ...point,
+                latitude: point.latitude,
+                longitude: point.longitude,
+                opcode: point.opcode, // Preserve opcode (101 or 104)
+              });
+            }
 
             console.log(
               `📍 Updated node ${point.globalId} (opcode ${point.opcode}): lat=${point.latitude}, lng=${point.longitude}`
@@ -724,11 +734,11 @@ export class UDPNodesManager {
 
     // Clear existing symbols
     this.udpDotsContainer.innerHTML = "";
-    
+
     // Clear existing locked node circles (they'll be recreated if nodes are still locked)
     this.lockedNodeCircles.forEach((circle) => circle.remove());
     this.lockedNodeCircles.clear();
-    
+
     // Clear existing executed node circles (they'll be recreated if nodes are still executed)
     this.executedNodeCircles.forEach((circle) => circle.remove());
     this.executedNodeCircles.clear();
@@ -855,10 +865,37 @@ export class UDPNodesManager {
 
         iconContainer.appendChild(iconElement);
 
-        // Add call sign label below green nodes (network nodes)
-        if (isGreenNode && point.callsign) {
+        // Add "M-A/c" label below mother aircraft (middle node)
+        if (isMotherAc) {
+          const motherLabel = document.createElement("div");
+          motherLabel.textContent = "M-A/c";
+          motherLabel.style.cssText = `
+            position: absolute;
+            top: ${iconSize / 2 + 4}px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffaa00;
+            font-family: monospace;
+            font-size: 10px;
+            font-weight: bold;
+            text-shadow: 0 0 3px black, 0 0 6px rgba(255, 170, 0, 0.8);
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 4;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 2px 4px;
+            border-radius: 2px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+          `;
+          iconContainer.appendChild(motherLabel);
+        }
+
+        // Add call sign label below green nodes (network nodes) - but not if it's the mother aircraft
+        if (isGreenNode && !isMotherAc) {
           const callsignLabel = document.createElement("div");
-          callsignLabel.textContent = point.callsign;
+          callsignLabel.textContent = point.callsign || `ID${globalId}`;
           callsignLabel.style.cssText = `
             position: absolute;
             top: ${iconSize / 2 + 4}px;
@@ -880,40 +917,6 @@ export class UDPNodesManager {
             text-rendering: optimizeLegibility;
           `;
           iconContainer.appendChild(callsignLabel);
-        }
-
-        // Add distance label for enemy nodes (red nodes) from mother aircraft
-        if (isRedNode && motherAircraft) {
-          const distanceNM = this.calculateDistance(
-            motherAircraft.latitude,
-            motherAircraft.longitude,
-            point.latitude,
-            point.longitude
-          );
-          const distanceLabel = document.createElement("div");
-          distanceLabel.textContent = `${distanceNM.toFixed(1)}NM`;
-          distanceLabel.style.cssText = `
-            position: absolute;
-            top: ${iconSize / 2 + 4}px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: #ff0000;
-            font-family: monospace;
-            font-size: 10px;
-            font-weight: bold;
-            text-shadow: 0 0 3px black, 0 0 6px rgba(255, 0, 0, 0.8);
-            white-space: nowrap;
-            pointer-events: none;
-            z-index: 4;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 2px 6px;
-            border-radius: 3px;
-            border: 1px solid rgba(255, 0, 0, 0.5);
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-            text-rendering: optimizeLegibility;
-          `;
-          iconContainer.appendChild(distanceLabel);
         }
 
         // Add yellow circle around locked red nodes
@@ -996,7 +999,9 @@ export class UDPNodesManager {
         if (isGreenNode) {
           iconContainer.addEventListener("click", (e) => {
             e.stopPropagation();
-            console.log(`🟢 Green node clicked: GID=${point.globalId}, dialogsEnabled=${this.dialogsEnabled}`);
+            console.log(
+              `🟢 Green node clicked: GID=${point.globalId}, dialogsEnabled=${this.dialogsEnabled}`
+            );
             // Get the container's position to calculate absolute screen coordinates
             const container = this.udpDotsContainer;
             const containerRect = container?.getBoundingClientRect();
@@ -1006,7 +1011,20 @@ export class UDPNodesManager {
             const absoluteY = containerRect
               ? containerRect.top + screenPoint.y
               : screenPoint.y;
-            this.showGreenNodeDialog(point, { x: absoluteX, y: absoluteY });
+            // Get the latest node from udpDataPoints to ensure we have merged metadata
+            const latestNode = this.udpDataPoints.get(point.globalId) || point;
+            console.log("🔍 NODE RETRIEVED FOR DIALOG:", {
+              globalId: point.globalId,
+              hasLatestNode: !!this.udpDataPoints.get(point.globalId),
+              latestNodeHasMetadata: !!latestNode.regionalData?.metadata,
+              latestNodeMetadata: latestNode.regionalData?.metadata,
+              pointHasMetadata: !!point.regionalData?.metadata,
+              pointMetadata: point.regionalData?.metadata,
+            });
+            this.showGreenNodeDialog(latestNode, {
+              x: absoluteX,
+              y: absoluteY,
+            });
           });
         }
 
@@ -1019,244 +1037,9 @@ export class UDPNodesManager {
    * Update connection lines between friendly and enemy nodes, and between green nodes
    */
   updateConnectionLines(): void {
-    if (!this.mapManager || !this.connectionLinesContainer || !this.nodesVisible) {
-      if (this.connectionLinesContainer) {
-        this.connectionLinesContainer.innerHTML = "";
-      }
-      return;
-    }
-
-    const mapboxMap = this.mapManager.getMapboxMap();
-    if (!mapboxMap) return;
-
-    // Ensure map is properly sized (important when map visibility is toggled)
-    try {
-      mapboxMap.resize();
-    } catch (e) {
-      console.warn("Map resize failed:", e);
-    }
-
-    // Clear existing lines
-    this.connectionLinesContainer.innerHTML = "";
-
-    // Separate friendly (opcode 101) and enemy (opcode 104) nodes
-    const friendlyNodes: UDPDataPoint[] = [];
-    const enemyNodes: UDPDataPoint[] = [];
-
-    this.udpDataPoints.forEach((point) => {
-      if (point.opcode === 101) {
-        friendlyNodes.push(point);
-      } else if (point.opcode === 104) {
-        enemyNodes.push(point);
-      }
-    });
-
-    // Get map bounds to filter visible points
-    const bounds = mapboxMap.getBounds();
-
-    // Draw lines between green nodes (friendly to friendly)
-    if (friendlyNodes.length > 1) {
-      console.log(
-        `🔗 Drawing ${friendlyNodes.length} green nodes, creating ${(friendlyNodes.length * (friendlyNodes.length - 1)) / 2} connections`
-      );
-      for (let i = 0; i < friendlyNodes.length; i++) {
-        for (let j = i + 1; j < friendlyNodes.length; j++) {
-          const node1 = friendlyNodes[i];
-          const node2 = friendlyNodes[j];
-
-          // Project lat/lng to screen coordinates first
-          const point1 = mapboxMap.project([node1.longitude, node1.latitude]);
-          const point2 = mapboxMap.project([node2.longitude, node2.latitude]);
-
-          // Check if at least one point is within visible bounds (relaxed check)
-          const node1Visible =
-            node1.longitude >= bounds.getWest() &&
-            node1.longitude <= bounds.getEast() &&
-            node1.latitude >= bounds.getSouth() &&
-            node1.latitude <= bounds.getNorth();
-          const node2Visible =
-            node2.longitude >= bounds.getWest() &&
-            node2.longitude <= bounds.getEast() &&
-            node2.latitude >= bounds.getSouth() &&
-            node2.latitude <= bounds.getNorth();
-
-          // Draw line if at least one node is visible or if line would cross visible area
-          if (node1Visible || node2Visible) {
-            // Calculate distance in nautical miles
-            const distanceNM = this.calculateDistance(
-              node1.latitude,
-              node1.longitude,
-              node2.latitude,
-              node2.longitude
-            );
-
-            // Calculate line length and angle
-            const dx = point2.x - point1.x;
-            const dy = point2.y - point1.y;
-            const length = Math.sqrt(dx * dx + dy * dy);
-            const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-
-            // Create line element using CSS with green color for friendly connections
-            const line = document.createElement("div");
-            line.style.cssText = `
-              position: absolute;
-              left: ${point1.x}px;
-              top: ${point1.y}px;
-              width: ${length}px;
-              height: 4px;
-              background-image: repeating-linear-gradient(
-                to right,
-                #00ff00 0px,
-                #00ff00 12px,
-                transparent 12px,
-                transparent 24px
-              );
-              background-color: rgba(0, 255, 0, 0.3);
-              opacity: 1;
-              transform-origin: 0 50%;
-              transform: rotate(${angle}deg);
-              pointer-events: none;
-              z-index: 2;
-              box-shadow: 0 0 4px rgba(0, 255, 0, 1), 0 0 8px rgba(0, 255, 0, 0.6);
-            `;
-
-            this.connectionLinesContainer.appendChild(line);
-
-            // Create distance label at the midpoint of the line
-            const midX = (point1.x + point2.x) / 2;
-            const midY = (point1.y + point2.y) / 2;
-            const distanceLabel = document.createElement("div");
-            distanceLabel.textContent = `${distanceNM.toFixed(1)}NM`;
-            distanceLabel.style.cssText = `
-              position: absolute;
-              left: ${midX}px;
-              top: ${midY}px;
-              transform: translate(-50%, -50%);
-              color: #00ff00;
-              font-family: monospace;
-              font-size: 10px;
-              font-weight: bold;
-              background: rgba(0, 0, 0, 0.8);
-              padding: 2px 6px;
-              border-radius: 3px;
-              border: 1px solid rgba(0, 255, 0, 0.5);
-              pointer-events: none;
-              z-index: 3;
-              text-shadow: 0 0 3px rgba(0, 255, 0, 0.8);
-              white-space: nowrap;
-              -webkit-font-smoothing: antialiased;
-              -moz-osx-font-smoothing: grayscale;
-              text-rendering: optimizeLegibility;
-            `;
-            this.connectionLinesContainer.appendChild(distanceLabel);
-
-            console.log(
-              `✅ Green line drawn: ${distanceNM.toFixed(1)} NM between nodes`
-            );
-          }
-        }
-      }
-    } else if (friendlyNodes.length === 1) {
-      console.log("⚠️ Only 1 green node, cannot draw connections");
-    } else {
-      console.log("⚠️ No green nodes found");
-    }
-
-    // Draw lines between each friendly and each enemy node
-    if (friendlyNodes.length > 0 && enemyNodes.length > 0) {
-      friendlyNodes.forEach((friendly) => {
-        enemyNodes.forEach((enemy) => {
-          // Check if both points are within visible bounds
-          if (
-            friendly.longitude >= bounds.getWest() &&
-            friendly.longitude <= bounds.getEast() &&
-            friendly.latitude >= bounds.getSouth() &&
-            friendly.latitude <= bounds.getNorth() &&
-            enemy.longitude >= bounds.getWest() &&
-            enemy.longitude <= bounds.getEast() &&
-            enemy.latitude >= bounds.getSouth() &&
-            enemy.latitude <= bounds.getNorth()
-          ) {
-            // Project lat/lng to screen coordinates
-            const friendlyPoint = mapboxMap.project([
-              friendly.longitude,
-              friendly.latitude,
-            ]);
-            const enemyPoint = mapboxMap.project([
-              enemy.longitude,
-              enemy.latitude,
-            ]);
-
-            // Calculate distance in nautical miles
-            const distanceNM = this.calculateDistance(
-              friendly.latitude,
-              friendly.longitude,
-              enemy.latitude,
-              enemy.longitude
-            );
-
-            // Calculate line length and angle
-            const dx = enemyPoint.x - friendlyPoint.x;
-            const dy = enemyPoint.y - friendlyPoint.y;
-            const length = Math.sqrt(dx * dx + dy * dy);
-            const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-
-            // Create line element using CSS with dashed effect
-            const line = document.createElement("div");
-            line.style.cssText = `
-              position: absolute;
-              left: ${friendlyPoint.x}px;
-              top: ${friendlyPoint.y}px;
-              width: ${length}px;
-              height: 3px;
-              background-image: repeating-linear-gradient(
-                to right,
-                #ff8800 0px,
-                #ff8800 10px,
-                transparent 10px,
-                transparent 20px
-              );
-              opacity: 0.9;
-              transform-origin: 0 50%;
-              transform: rotate(${angle}deg);
-              pointer-events: none;
-              z-index: 2;
-              box-shadow: 0 0 3px rgba(255, 136, 0, 0.9);
-            `;
-
-            this.connectionLinesContainer.appendChild(line);
-
-            // Create distance label at the midpoint of the line
-            const midX = (friendlyPoint.x + enemyPoint.x) / 2;
-            const midY = (friendlyPoint.y + enemyPoint.y) / 2;
-            const distanceLabel = document.createElement("div");
-            distanceLabel.textContent = `${distanceNM.toFixed(1)}NM`;
-            distanceLabel.style.cssText = `
-              position: absolute;
-              left: ${midX}px;
-              top: ${midY}px;
-              transform: translate(-50%, -50%);
-              color: #ff8800;
-              font-family: monospace;
-              font-size: 10px;
-              font-weight: bold;
-              background: rgba(0, 0, 0, 0.8);
-              padding: 2px 6px;
-              border-radius: 3px;
-              border: 1px solid rgba(255, 136, 0, 0.5);
-              pointer-events: none;
-              z-index: 3;
-              text-shadow: 0 0 3px rgba(255, 136, 0, 0.8);
-              white-space: nowrap;
-              -webkit-font-smoothing: antialiased;
-              -moz-osx-font-smoothing: grayscale;
-              text-rendering: optimizeLegibility;
-            `;
-            this.connectionLinesContainer.appendChild(distanceLabel);
-
-          }
-        });
-      });
+    // Connection lines are disabled - just clear the container
+    if (this.connectionLinesContainer) {
+      this.connectionLinesContainer.innerHTML = "";
     }
   }
 
@@ -1642,9 +1425,13 @@ export class UDPNodesManager {
     node: UDPDataPoint,
     screenPoint: { x: number; y: number }
   ): void {
-    console.log(`🔍 showGreenNodeDialog called: dialogsEnabled=${this.dialogsEnabled}, node=${node.globalId}`);
+    console.log(
+      `🔍 showGreenNodeDialog called: dialogsEnabled=${this.dialogsEnabled}, node=${node.globalId}`
+    );
     if (!this.dialogsEnabled) {
-      console.warn(`⚠️ Dialogs are disabled, cannot show dialog for node ${node.globalId}`);
+      console.warn(
+        `⚠️ Dialogs are disabled, cannot show dialog for node ${node.globalId}`
+      );
       return;
     }
     // Remove existing dialog if any
@@ -1652,17 +1439,62 @@ export class UDPNodesManager {
       this.redNodeDialog.remove();
     }
 
+    // Get the latest node from storage to ensure we have merged data
+    const storedNode = this.udpDataPoints.get(node.globalId);
+    const nodeToUse = storedNode || node;
+
     // Get callsign from opcode 102 data
-    const callsign = node.callsign || null;
-    const isMotherAc = node.internalData && node.internalData.isMotherAc === 1;
+    const callsign = nodeToUse.callsign || null;
+    const isMotherAc =
+      nodeToUse.internalData && nodeToUse.internalData.isMotherAc === 1;
 
     // Get metadata from opcode 102 data (regionalData.metadata)
-    const metadata = node.regionalData?.metadata || {};
-    const baroAltitude =
-      metadata.baroAltitude !== undefined ? metadata.baroAltitude : NaN;
-    const groundSpeed =
-      metadata.groundSpeed !== undefined ? metadata.groundSpeed : NaN;
-    const mach = metadata.mach !== undefined ? metadata.mach : NaN;
+    // Also check if metadata exists directly on the node (fallback)
+    const metadata =
+      nodeToUse.regionalData?.metadata || nodeToUse.metadata || {};
+
+    // Log the actual node structure to see what we have
+    console.log("🔍 NODE STRUCTURE IN DIALOG:", {
+      globalId: node.globalId,
+      hasStoredNode: !!storedNode,
+      storedNodeHasMetadata: !!storedNode?.regionalData?.metadata,
+      storedNodeMetadata: storedNode?.regionalData?.metadata,
+      hasRegionalData: !!node.regionalData,
+      regionalData: node.regionalData,
+      hasMetadataOnNode: !!node.metadata,
+      metadataOnNode: node.metadata,
+      metadata: metadata,
+      metadataType: typeof metadata,
+      metadataKeys: Object.keys(metadata),
+      "metadata.baroAltitude": metadata.baroAltitude,
+      "metadata.groundSpeed": metadata.groundSpeed,
+      "metadata.mach": metadata.mach,
+    });
+
+    // Directly access from metadata - don't default to NaN
+    const baroAltitude = metadata.baroAltitude;
+    const groundSpeed = metadata.groundSpeed;
+    const mach = metadata.mach;
+
+    // If values are still undefined, try accessing from node directly
+    const finalBaroAltitude =
+      baroAltitude !== undefined ? baroAltitude : (node as any).baroAltitude;
+    const finalGroundSpeed =
+      groundSpeed !== undefined ? groundSpeed : (node as any).groundSpeed;
+    const finalMach = mach !== undefined ? mach : (node as any).mach;
+
+    // Log extracted values immediately
+    console.log("🔍 EXTRACTED VALUES:", {
+      baroAltitude: baroAltitude,
+      baroAltitudeType: typeof baroAltitude,
+      finalBaroAltitude: finalBaroAltitude,
+      groundSpeed: groundSpeed,
+      groundSpeedType: typeof groundSpeed,
+      finalGroundSpeed: finalGroundSpeed,
+      mach: mach,
+      machType: typeof mach,
+      finalMach: finalMach,
+    });
 
     // Debug logging to see what data is available
     console.log(`🔍 Green node dialog for ${node.globalId}:`, {
@@ -1677,6 +1509,28 @@ export class UDPNodesManager {
       baroAltitude: baroAltitude,
       groundSpeed: groundSpeed,
       mach: mach,
+      fullNode: node, // Log entire node to see structure
+    });
+
+    // Detailed metadata logging
+    console.log("📊 METADATA EXTRACTION DETAILS:", {
+      globalId: node.globalId,
+      "node.regionalData exists": !!node.regionalData,
+      "node.regionalData.metadata exists": !!node.regionalData?.metadata,
+      "metadata object": metadata,
+      "metadata keys": Object.keys(metadata),
+      "metadata.baroAltitude": metadata.baroAltitude,
+      "metadata.groundSpeed": metadata.groundSpeed,
+      "metadata.mach": metadata.mach,
+      "node.baroAltitude (direct)": node.baroAltitude,
+      "node.groundSpeed (direct)": node.groundSpeed,
+      "node.mach (direct)": node.mach,
+      "extracted baroAltitude": baroAltitude,
+      "extracted groundSpeed": groundSpeed,
+      "extracted mach": mach,
+      "baroAltitude isNaN": isNaN(baroAltitude),
+      "groundSpeed isNaN": isNaN(groundSpeed),
+      "mach isNaN": isNaN(mach),
     });
 
     // Create dialog
@@ -1777,11 +1631,46 @@ export class UDPNodesManager {
       background: rgba(255, 255, 255, 0.05);
       border-radius: 4px;
     `;
-    const baroAltitudeDisplay = isNaN(baroAltitude)
-      ? "NaN"
-      : `${baroAltitude}ft`;
-    const groundSpeedDisplay = isNaN(groundSpeed) ? "NaN" : `${groundSpeed}kt`;
-    const machDisplay = isNaN(mach) ? "NaN" : `${mach}`;
+
+    // Use final values (with fallback)
+    const valuesToDisplay = {
+      baroAltitude: finalBaroAltitude,
+      groundSpeed: finalGroundSpeed,
+      mach: finalMach,
+    };
+
+    // Log values right before formatting
+    console.log("📊 VALUES BEFORE FORMATTING:", {
+      baroAltitude: valuesToDisplay.baroAltitude,
+      baroAltitudeType: typeof valuesToDisplay.baroAltitude,
+      baroAltitudeIsNaN: isNaN(valuesToDisplay.baroAltitude as number),
+      baroAltitudeEquals32767: valuesToDisplay.baroAltitude === 32767,
+      groundSpeed: valuesToDisplay.groundSpeed,
+      groundSpeedType: typeof valuesToDisplay.groundSpeed,
+      groundSpeedIsNaN: isNaN(valuesToDisplay.groundSpeed as number),
+      mach: valuesToDisplay.mach,
+      machType: typeof valuesToDisplay.mach,
+      machIsNaN: isNaN(valuesToDisplay.mach as number),
+    });
+
+    // Show raw values as-is, convert directly to string
+    const baroAltitudeDisplay =
+      valuesToDisplay.baroAltitude != null
+        ? String(valuesToDisplay.baroAltitude)
+        : "";
+    const groundSpeedDisplay =
+      valuesToDisplay.groundSpeed != null
+        ? String(valuesToDisplay.groundSpeed)
+        : "";
+    const machDisplay =
+      valuesToDisplay.mach != null ? String(valuesToDisplay.mach) : "";
+
+    // Log formatted values
+    console.log("📊 FORMATTED VALUES:", {
+      baroAltitudeDisplay,
+      groundSpeedDisplay,
+      machDisplay,
+    });
 
     metadataSection.innerHTML = `
       <div style="color: #00ff00; font-weight: bold; margin-bottom: 8px;">METADATA:</div>

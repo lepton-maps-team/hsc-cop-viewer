@@ -96,12 +96,12 @@ function setupUdpClient(host: string, port: number): Promise<void> {
 
       udpSocket.on("message", (msg) => {
         const rawMsgStr = `raw message: ${JSON.stringify(Array.from(msg))}`;
-        console.log(rawMsgStr);
+        // console.log(rawMsgStr);
         writeLog(rawMsgStr);
 
         const isAsciiBinary = msg.every((byte) => byte === 48 || byte === 49);
         const isAsciiStr = `isAsciiBinary: ${isAsciiBinary}`;
-        console.log(isAsciiStr);
+        //   console.log(isAsciiStr);
         writeLog(isAsciiStr);
 
         const bin = isAsciiBinary
@@ -113,11 +113,11 @@ function setupUdpClient(host: string, port: number): Promise<void> {
           parseInt(bin.slice(start, start + len), 2);
 
         const binStr = `bin: ${bin}`;
-        console.log(binStr);
+        //  console.log(binStr);
         writeLog(binStr);
 
         const readBitsStr = `readBits: ${readBits(0, 8)}`;
-        console.log(readBitsStr);
+        //  console.log(readBitsStr);
         writeLog(readBitsStr);
 
         const readI16 = (start: number) => {
@@ -136,6 +136,8 @@ function setupUdpClient(host: string, port: number): Promise<void> {
         };
 
         const opcode = header.opcode;
+
+        console.log("opcode:", opcode);
 
         if (opcode === 101) {
           const numMembers = readBits(128, 8); // byte 16
@@ -156,7 +158,7 @@ function setupUdpClient(host: string, port: number): Promise<void> {
               reserved: readI16(offset + 176),
               opcode: 101,
             };
-
+            //    console.log("Member:", m);
             members.push(m);
             offset += 192; // 24 bytes = 192 bits
           }
@@ -441,8 +443,9 @@ function setupUdpClient(host: string, port: number): Promise<void> {
               circleRanges, // opcode102J - Circle ranges
               opcode: 102,
             };
-            member.globalId = 10;
-            console.log("Member:", member.regionalData.metadata);
+            // Use the globalId that was read from the data, don't hardcode it
+            // member.globalId is already set from line 240: const globalId = readU32(offset);
+            member.globalId = globalId;
             networkMembers.push(member);
             // Move offset to next member (after all data including variable length vectors)
             offset = sensorsOffset;
