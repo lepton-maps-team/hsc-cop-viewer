@@ -87,6 +87,9 @@ class TacticalDisplayClient {
     this.geoMessageManager = new GeoMessageManager(this.mapManager);
 
     this.initialize();
+    
+    // Enable dialogs for network nodes on initialization (101 screen is default)
+    this.udpNodesManager.setDialogsEnabled(true);
   }
 
   private initialize() {
@@ -106,6 +109,8 @@ class TacticalDisplayClient {
         this.udpNodesManager.updateConnectionLines();
         this.engagementManager.updateLines();
       }
+      // Update map center display
+      this.updateMapCenterDisplay();
     });
 
     // Listen for map zoom changes
@@ -249,6 +254,9 @@ class TacticalDisplayClient {
 
     container.appendChild(visualizationArea);
 
+    // Create map center display in top left
+    this.createMapCenterDisplay(visualizationArea);
+
     // Determine center aircraft (for rendering, not for map center)
     if (this.aircraft.size > 0) {
       const aircraftArray = Array.from(this.aircraft.values());
@@ -276,6 +284,8 @@ class TacticalDisplayClient {
         initialLat,
         initialLng
       );
+      // Update map center display after map is created
+      setTimeout(() => this.updateMapCenterDisplay(), 100);
       this.udpNodesManager.setMapManager(this.mapManager);
       this.networkMembersTable.setMapManager(this.mapManager);
       this.engagementManager.setMapManager(this.mapManager);
@@ -652,7 +662,7 @@ class TacticalDisplayClient {
               <span style="color: ${
                 isMotherAc ? "#ffaa00" : "#cccccc"
               }; font-size: 10px;">
-                ${isMotherAc ? "✈ MOTHER" : ""}
+                ${isMotherAc ? "MOTHER" : ""}
               </span>
             </div>
             <div style="margin-bottom: 4px;">
@@ -792,13 +802,62 @@ class TacticalDisplayClient {
     this.checkWarnings();
   }
 
+  private createMapCenterDisplay(container: HTMLElement): void {
+    // Remove existing display if any
+    const existing = document.getElementById("map-center-display");
+    if (existing) {
+      existing.remove();
+    }
+
+    const display = document.createElement("div");
+    display.id = "map-center-display";
+    display.style.cssText = `
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.8);
+      border: 2px solid #00ff00;
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: #ffffff;
+      font-family: monospace;
+      font-size: 11px;
+      z-index: 1000;
+      pointer-events: none;
+      box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+    `;
+    container.appendChild(display);
+    this.updateMapCenterDisplay();
+  }
+
+  private updateMapCenterDisplay(): void {
+    const display = document.getElementById("map-center-display");
+    if (!display || !this.mapManager) return;
+
+    const center = this.mapManager.getCenter();
+    if (center) {
+      display.innerHTML = `
+        <div style="color: #00ff00; font-weight: bold; margin-bottom: 4px; font-size: 12px;">MAP CENTER</div>
+        <div style="color: #ffffff; line-height: 1.4;">
+          <div>Lat: <span style="color: #00ff00; font-weight: bold;">${center.lat.toFixed(6)}°</span></div>
+          <div>Lng: <span style="color: #00ff00; font-weight: bold;">${center.lng.toFixed(6)}°</span></div>
+        </div>
+      `;
+    } else {
+      display.innerHTML = `
+        <div style="color: #00ff00; font-weight: bold; margin-bottom: 4px; font-size: 12px;">MAP CENTER</div>
+        <div style="color: #888888;">Initializing...</div>
+      `;
+    }
+  }
+
   private setViewMode(
     mode: "normal" | "self-only" | "network-103" | "engagement-104"
   ) {
     this.viewMode = mode;
 
-    // Disable UDP node dialogs on all screens
-    this.udpNodesManager.setDialogsEnabled(false);
+    // Enable dialogs for network nodes (green nodes) on all screens
+    this.udpNodesManager.setDialogsEnabled(true);
 
     // Enable radar circles only in 101 screen; hide them in 102/103
     this.udpNodesManager.setRadarCirclesEnabled(this.viewMode === "normal");
@@ -982,7 +1041,7 @@ class TacticalDisplayClient {
     const lockButtons = document.querySelectorAll("button");
     lockButtons.forEach((button) => {
       if (button.textContent?.includes("LOCK")) {
-        button.textContent = "🔒 LOCKED";
+        button.textContent = "LOCKED";
         button.style.background = "#00ff00";
         button.style.color = "#000000";
         button.style.fontWeight = "bold";
@@ -1010,7 +1069,7 @@ class TacticalDisplayClient {
       box-shadow: 0 0 20px rgba(255, 136, 0, 0.5);
     `;
     notification.innerHTML = `
-      🎯 TARGET LOCKED<br>
+      TARGET LOCKED<br>
       <span style="font-size: 14px;">${aircraft.callSign}</span><br>
       <span style="font-size: 12px; color: #ffff00;">Tracking active</span>
     `;
@@ -1035,7 +1094,7 @@ class TacticalDisplayClient {
     const executeButtons = document.querySelectorAll("button");
     executeButtons.forEach((button) => {
       if (button.textContent?.includes("EXECUTE")) {
-        button.textContent = "✅ EXECUTED";
+        button.textContent = "EXECUTED";
         button.style.background = "#00ff00";
         button.style.color = "#000000";
         button.style.fontWeight = "bold";
@@ -1064,7 +1123,7 @@ class TacticalDisplayClient {
       animation: pulse 0.5s ease-in-out;
     `;
     notification.innerHTML = `
-      💥 TARGET ELIMINATED<br>
+      TARGET ELIMINATED<br>
       <span style="font-size: 14px;">${aircraft.callSign}</span><br>
       <span style="font-size: 12px; color: #ffff00;">Threat neutralized</span>
     `;

@@ -44,7 +44,8 @@ export class AdaptiveRadarCircles {
 
       const rangeRatio = adaptiveRange / 50;
       const baseRadius = i * ((minDimension * 0.35 * rangeRatio) / numCircles);
-      const radius = baseRadius / zoomLevel;
+      // Keep circles the same size regardless of zoom level
+      const radius = baseRadius;
 
       const minRadius = 30;
       const maxRadius = minDimension * 0.4;
@@ -65,31 +66,10 @@ export class AdaptiveRadarCircles {
         opacity: 0.7;
       `;
 
-      const rangeLabel = document.createElement("div");
-      const estimatedNM = Math.round((clampedRadius / minDimension) * 400);
-      rangeLabel.textContent = `${estimatedNM}NM`;
-      rangeLabel.style.cssText = `
-        position: absolute;
-        top: 50%;
-        left: ${50 + (clampedRadius / minDimension) * 100}%;
-        color: #00ff00;
-        font-family: monospace;
-        font-size: 10px;
-        background: rgba(0, 0, 0, 0.7);
-        padding: 2px 4px;
-        border-radius: 2px;
-        transform: translateY(-50%);
-        z-index: 2;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-        text-rendering: optimizeLegibility;
-      `;
-
       visualizationArea.appendChild(circle);
-      visualizationArea.appendChild(rangeLabel);
 
       console.log(
-        `📡 Created radar circle ${i}: radius=${clampedRadius.toFixed(1)}px, range≈${estimatedNM}NM`
+        `📡 Created radar circle ${i}: radius=${clampedRadius.toFixed(1)}px`
       );
     }
 

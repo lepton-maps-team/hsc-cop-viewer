@@ -16,6 +16,8 @@ export class UDPNodesManager {
   private udpDotsContainer: HTMLElement | null = null;
   private connectionLinesContainer: HTMLElement | null = null;
   private radarCirclesContainer: HTMLElement | null = null;
+  private lockedNodeCircles: Map<number, HTMLElement> = new Map(); // Track yellow circles for locked nodes
+  private executedNodeCircles: Map<number, HTMLElement> = new Map(); // Track red circles for executed nodes
   private mapManager: MapManager | null = null;
   private hasInitialCentering: boolean = false; // Track if we've done initial centering
   private onLockNode: ((node: UDPDataPoint) => void) | null = null;
@@ -23,6 +25,7 @@ export class UDPNodesManager {
   private redNodeDialog: HTMLElement | null = null;
   private dialogOpenForNodeId: number | null = null; // Track which node has dialog open
   private lockedNodeIds: Set<number> = new Set(); // Track locked nodes
+  private executedNodeIds: Set<number> = new Set(); // Track executed nodes
   private threatLockStatus: Map<number, boolean> = new Map(); // Track threat lock status by threatId (opcode 106)
   private dialogsEnabled: boolean = false; // Control whether red/green dialogs can be shown
   private radarCirclesEnabled: boolean = true; // Control whether radar circles are rendered
@@ -39,13 +42,18 @@ export class UDPNodesManager {
   }
 
   /**
-   * Dialogs are globally disabled. This is kept only to satisfy existing calls.
+   * Enable or disable dialogs for network nodes (green nodes).
+   * Red node dialogs remain disabled.
    */
-  setDialogsEnabled(_enabled: boolean): void {
-    this.dialogsEnabled = false;
-    // Close any open dialog immediately
-    this.hideRedNodeDialog();
-    this.hideGreenNodeDialog();
+  setDialogsEnabled(enabled: boolean): void {
+    // Only enable dialogs for green nodes (network nodes)
+    // Red node dialogs stay disabled
+    this.dialogsEnabled = enabled;
+    // Close any open dialogs if disabling
+    if (!enabled) {
+      this.hideRedNodeDialog();
+      this.hideGreenNodeDialog();
+    }
   }
 
   /**
@@ -716,6 +724,19 @@ export class UDPNodesManager {
 
     // Clear existing symbols
     this.udpDotsContainer.innerHTML = "";
+    
+    // Clear existing locked node circles (they'll be recreated if nodes are still locked)
+    this.lockedNodeCircles.forEach((circle) => circle.remove());
+    this.lockedNodeCircles.clear();
+    
+    // Clear existing executed node circles (they'll be recreated if nodes are still executed)
+    this.executedNodeCircles.forEach((circle) => circle.remove());
+    this.executedNodeCircles.clear();
+
+    // Find the mother aircraft (middle node) for distance calculations
+    const motherAircraft = Array.from(this.udpDataPoints.values()).find(
+      (node) => node.internalData && node.internalData.isMotherAc === 1
+    );
 
     // Get map bounds to filter visible points
     const bounds = mapboxMap.getBounds();
@@ -812,14 +833,13 @@ export class UDPNodesManager {
         const isRedNode = point.opcode === 104;
         const isGreenNode = point.opcode === 101; // Green nodes are network nodes
 
-        // Create container for icon (to add lock indicator overlay)
+        // Create container for icon (to add lock indicator overlay and call sign label)
         const iconContainer = document.createElement("div");
         iconContainer.style.cssText = `
           position: absolute;
           left: ${screenPoint.x}px;
           top: ${screenPoint.y}px;
           width: ${iconSize}px;
-          height: ${iconSize}px;
           transform: translate(-50%, -50%);
           pointer-events: ${isRedNode || isGreenNode ? "auto" : "none"};
           z-index: 3;
@@ -835,28 +855,112 @@ export class UDPNodesManager {
 
         iconContainer.appendChild(iconElement);
 
-        // Add lock indicator overlay if node is locked (manually or via opcode 106)
-        if (useLockedIcon) {
-          const lockIndicator = document.createElement("div");
-          lockIndicator.style.cssText = `
+        // Add call sign label below green nodes (network nodes)
+        if (isGreenNode && point.callsign) {
+          const callsignLabel = document.createElement("div");
+          callsignLabel.textContent = point.callsign;
+          callsignLabel.style.cssText = `
             position: absolute;
-            top: -4px;
-            right: -4px;
-            width: 12px;
-            height: 12px;
-            background: #ffaa00;
-            border: 2px solid #ffffff;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 8px;
-            z-index: 4;
-            box-shadow: 0 0 4px rgba(255, 170, 0, 0.8);
+            top: ${iconSize / 2 + 4}px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #00ff00;
+            font-family: monospace;
+            font-size: 10px;
+            font-weight: bold;
+            text-shadow: 0 0 3px black, 0 0 6px rgba(0, 255, 0, 0.8);
+            white-space: nowrap;
             pointer-events: none;
+            z-index: 4;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 2px 4px;
+            border-radius: 2px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
           `;
-          lockIndicator.textContent = "🔒";
-          iconContainer.appendChild(lockIndicator);
+          iconContainer.appendChild(callsignLabel);
+        }
+
+        // Add distance label for enemy nodes (red nodes) from mother aircraft
+        if (isRedNode && motherAircraft) {
+          const distanceNM = this.calculateDistance(
+            motherAircraft.latitude,
+            motherAircraft.longitude,
+            point.latitude,
+            point.longitude
+          );
+          const distanceLabel = document.createElement("div");
+          distanceLabel.textContent = `${distanceNM.toFixed(1)}NM`;
+          distanceLabel.style.cssText = `
+            position: absolute;
+            top: ${iconSize / 2 + 4}px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ff0000;
+            font-family: monospace;
+            font-size: 10px;
+            font-weight: bold;
+            text-shadow: 0 0 3px black, 0 0 6px rgba(255, 0, 0, 0.8);
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 4;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 2px 6px;
+            border-radius: 3px;
+            border: 1px solid rgba(255, 0, 0, 0.5);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+          `;
+          iconContainer.appendChild(distanceLabel);
+        }
+
+        // Add yellow circle around locked red nodes
+        if (isRedNode && useLockedIcon) {
+          const circleRadius = 40; // Radius of the yellow circle
+          const lockCircle = document.createElement("div");
+          lockCircle.style.cssText = `
+            position: absolute;
+            left: ${screenPoint.x}px;
+            top: ${screenPoint.y}px;
+            width: ${circleRadius * 2}px;
+            height: ${circleRadius * 2}px;
+            margin-top: -${circleRadius}px;
+            margin-left: -${circleRadius}px;
+            border: 3px solid #ffff00;
+            border-radius: 50%;
+            pointer-events: none;
+            box-sizing: border-box;
+            z-index: 2;
+            box-shadow: 0 0 8px rgba(255, 255, 0, 0.8), 0 0 16px rgba(255, 255, 0, 0.4);
+          `;
+          this.udpDotsContainer.appendChild(lockCircle);
+          this.lockedNodeCircles.set(globalId, lockCircle);
+        }
+
+        // Add red circle around executed red nodes
+        const isExecuted = this.executedNodeIds.has(globalId);
+        if (isRedNode && isExecuted) {
+          const circleRadius = 40; // Radius of the red circle
+          const executeCircle = document.createElement("div");
+          executeCircle.style.cssText = `
+            position: absolute;
+            left: ${screenPoint.x}px;
+            top: ${screenPoint.y}px;
+            width: ${circleRadius * 2}px;
+            height: ${circleRadius * 2}px;
+            margin-top: -${circleRadius}px;
+            margin-left: -${circleRadius}px;
+            border: 3px solid #ff0000;
+            border-radius: 50%;
+            pointer-events: none;
+            box-sizing: border-box;
+            z-index: 2;
+            box-shadow: 0 0 8px rgba(255, 0, 0, 0.8), 0 0 16px rgba(255, 0, 0, 0.4);
+          `;
+          this.udpDotsContainer.appendChild(executeCircle);
+          this.executedNodeCircles.set(globalId, executeCircle);
         }
 
         iconElement.onload = () => {
@@ -892,6 +996,7 @@ export class UDPNodesManager {
         if (isGreenNode) {
           iconContainer.addEventListener("click", (e) => {
             e.stopPropagation();
+            console.log(`🟢 Green node clicked: GID=${point.globalId}, dialogsEnabled=${this.dialogsEnabled}`);
             // Get the container's position to calculate absolute screen coordinates
             const container = this.udpDotsContainer;
             const containerRect = container?.getBoundingClientRect();
@@ -1017,6 +1122,34 @@ export class UDPNodesManager {
 
             this.connectionLinesContainer.appendChild(line);
 
+            // Create distance label at the midpoint of the line
+            const midX = (point1.x + point2.x) / 2;
+            const midY = (point1.y + point2.y) / 2;
+            const distanceLabel = document.createElement("div");
+            distanceLabel.textContent = `${distanceNM.toFixed(1)}NM`;
+            distanceLabel.style.cssText = `
+              position: absolute;
+              left: ${midX}px;
+              top: ${midY}px;
+              transform: translate(-50%, -50%);
+              color: #00ff00;
+              font-family: monospace;
+              font-size: 10px;
+              font-weight: bold;
+              background: rgba(0, 0, 0, 0.8);
+              padding: 2px 6px;
+              border-radius: 3px;
+              border: 1px solid rgba(0, 255, 0, 0.5);
+              pointer-events: none;
+              z-index: 3;
+              text-shadow: 0 0 3px rgba(0, 255, 0, 0.8);
+              white-space: nowrap;
+              -webkit-font-smoothing: antialiased;
+              -moz-osx-font-smoothing: grayscale;
+              text-rendering: optimizeLegibility;
+            `;
+            this.connectionLinesContainer.appendChild(distanceLabel);
+
             console.log(
               `✅ Green line drawn: ${distanceNM.toFixed(1)} NM between nodes`
             );
@@ -1092,6 +1225,34 @@ export class UDPNodesManager {
             `;
 
             this.connectionLinesContainer.appendChild(line);
+
+            // Create distance label at the midpoint of the line
+            const midX = (friendlyPoint.x + enemyPoint.x) / 2;
+            const midY = (friendlyPoint.y + enemyPoint.y) / 2;
+            const distanceLabel = document.createElement("div");
+            distanceLabel.textContent = `${distanceNM.toFixed(1)}NM`;
+            distanceLabel.style.cssText = `
+              position: absolute;
+              left: ${midX}px;
+              top: ${midY}px;
+              transform: translate(-50%, -50%);
+              color: #ff8800;
+              font-family: monospace;
+              font-size: 10px;
+              font-weight: bold;
+              background: rgba(0, 0, 0, 0.8);
+              padding: 2px 6px;
+              border-radius: 3px;
+              border: 1px solid rgba(255, 136, 0, 0.5);
+              pointer-events: none;
+              z-index: 3;
+              text-shadow: 0 0 3px rgba(255, 136, 0, 0.8);
+              white-space: nowrap;
+              -webkit-font-smoothing: antialiased;
+              -moz-osx-font-smoothing: grayscale;
+              text-rendering: optimizeLegibility;
+            `;
+            this.connectionLinesContainer.appendChild(distanceLabel);
 
           }
         });
@@ -1180,9 +1341,8 @@ export class UDPNodesManager {
       // Calculate radius based on range
       const baseRadius = (minDimension * 0.35 * (i + 1)) / numCircles;
 
-      // Use current zoom level if available
-      const zoomLevel = this.mapManager?.getZoom() || 15;
-      const radius = baseRadius / zoomLevel;
+      // Keep circles the same size regardless of zoom level
+      const radius = baseRadius;
 
       const minRadius = 30;
       const maxRadius = minDimension * 0.4;
@@ -1203,26 +1363,7 @@ export class UDPNodesManager {
         opacity: 0.7;
       `;
 
-      // Create range label
-      const rangeLabel = document.createElement("div");
-      rangeLabel.textContent = `${Math.round(rangeNM)}NM`;
-      rangeLabel.style.cssText = `
-        position: absolute;
-        top: 50%;
-        left: ${50 + (clampedRadius / minDimension) * 100}%;
-        color: #00ff00;
-        font-family: monospace;
-        font-size: 10px;
-        background: rgba(0, 0, 0, 0.7);
-        padding: 2px 4px;
-        border-radius: 2px;
-        transform: translateY(-50%);
-        z-index: 2;
-        pointer-events: none;
-      `;
-
       this.radarCirclesContainer.appendChild(circle);
-      this.radarCirclesContainer.appendChild(rangeLabel);
     }
 
     console.log(
@@ -1278,7 +1419,7 @@ export class UDPNodesManager {
       border-bottom: 1px solid #ff0000;
       padding-bottom: 6px;
     `;
-    header.textContent = `🎯 TARGET ${node.globalId}`;
+    header.textContent = `TARGET ${node.globalId}`;
     dialog.appendChild(header);
 
     // Node info
@@ -1320,7 +1461,7 @@ export class UDPNodesManager {
       transition: all 0.2s;
       width: 100%;
     `;
-    lockBtn.textContent = "🎯 LOCK";
+    lockBtn.textContent = "LOCK";
     lockBtn.addEventListener("mouseenter", () => {
       if (!lockBtn.disabled) {
         lockBtn.style.background = "#ffaa00";
@@ -1365,7 +1506,7 @@ export class UDPNodesManager {
       transition: all 0.2s;
       width: 100%;
     `;
-    executeBtn.textContent = "💥 EXECUTE";
+    executeBtn.textContent = "EXECUTE";
     executeBtn.addEventListener("mouseenter", () => {
       executeBtn.style.background = "#ff3333";
       executeBtn.style.transform = "scale(1.05)";
@@ -1375,9 +1516,16 @@ export class UDPNodesManager {
       executeBtn.style.transform = "scale(1)";
     });
     executeBtn.addEventListener("click", () => {
+      // Mark node as executed
+      this.executedNodeIds.add(node.globalId);
+
       if (this.onExecuteNode) {
         this.onExecuteNode(node);
       }
+
+      // Update the dots to show the red circle around the executed node
+      this.updateUDPDots();
+
       this.hideRedNodeDialog();
       console.log(`💥 Executed on red node ${node.globalId}`);
     });
@@ -1467,7 +1615,7 @@ export class UDPNodesManager {
     ) as HTMLButtonElement;
     if (lockBtn) {
       if (isLocked) {
-        lockBtn.textContent = "🔒 LOCKED";
+        lockBtn.textContent = "LOCKED";
         lockBtn.style.background = "#44ff44";
         lockBtn.disabled = true;
         lockBtn.style.opacity = "0.7";
@@ -1494,7 +1642,9 @@ export class UDPNodesManager {
     node: UDPDataPoint,
     screenPoint: { x: number; y: number }
   ): void {
+    console.log(`🔍 showGreenNodeDialog called: dialogsEnabled=${this.dialogsEnabled}, node=${node.globalId}`);
     if (!this.dialogsEnabled) {
+      console.warn(`⚠️ Dialogs are disabled, cannot show dialog for node ${node.globalId}`);
       return;
     }
     // Remove existing dialog if any
@@ -1560,7 +1710,7 @@ export class UDPNodesManager {
       border-bottom: 1px solid #00ff00;
       padding-bottom: 6px;
     `;
-    header.textContent = `🟢 NETWORK NODE ${node.globalId}`;
+    header.textContent = `NETWORK NODE ${node.globalId}`;
     dialog.appendChild(header);
 
     // Callsign display (from opcode 102)
@@ -1593,7 +1743,7 @@ export class UDPNodesManager {
         background: rgba(255, 170, 0, 0.2);
         border-radius: 4px;
       `;
-      motherIndicator.textContent = "✈️ MOTHER AIRCRAFT";
+      motherIndicator.textContent = "MOTHER AIRCRAFT";
       dialog.appendChild(motherIndicator);
     }
 
