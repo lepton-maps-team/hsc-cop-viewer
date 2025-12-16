@@ -12,6 +12,7 @@ import { EngagementManager } from "./components/EngagementManager";
 import { EngagementDisplay } from "./components/EngagementDisplay";
 import { Screen104Display } from "./components/Screen104Display";
 import { GeoMessageManager } from "./components/GeoMessageManager";
+import { Screen103SensorView } from "./components/Screen103SensorView";
 
 class TacticalDisplayClient {
   private aircraft: Map<string, Aircraft> = new Map();
@@ -36,6 +37,7 @@ class TacticalDisplayClient {
   private engagementManager: EngagementManager;
   private engagementDisplay: EngagementDisplay;
   private screen104Display: Screen104Display;
+  private screen103SensorView: Screen103SensorView;
   private geoMessageManager: GeoMessageManager;
   private simulationSystem: {
     isRunning: boolean;
@@ -90,6 +92,7 @@ class TacticalDisplayClient {
     this.engagementManager = new EngagementManager(this.mapManager);
     this.engagementDisplay = new EngagementDisplay();
     this.screen104Display = new Screen104Display();
+    this.screen103SensorView = new Screen103SensorView();
     this.geoMessageManager = new GeoMessageManager(this.mapManager);
 
     this.initialize();
@@ -140,6 +143,14 @@ class TacticalDisplayClient {
         // Update network members table
         const networkMembers = this.udpNodesManager.getNetworkMembers();
         this.networkMembersTable.update(networkMembers);
+
+        // Update 103 screen sensor view ONLY if in 103 mode
+        if (this.viewMode === "network-103") {
+          const display = document.getElementById("screen-103-sensor-view");
+          if (display) {
+            this.screen103SensorView.update(networkMembers);
+          }
+        }
 
         // Handle opcode 103 engagement data
         const engagementData = data.filter((point) => point.opcode === 103);
@@ -601,7 +612,7 @@ class TacticalDisplayClient {
 
     this.debugInfo.create(container, this.aircraft, this.nodeId);
 
-    // 103 screen: show detailed network node info (same fields as green-node dialog)
+    // 103 screen: show sensor view with airplane model
     const existingDetailsPanel = document.getElementById(
       "network-details-panel"
     );
@@ -610,6 +621,24 @@ class TacticalDisplayClient {
     }
 
     if (this.viewMode === "network-103") {
+      console.log("🎯🎯🎯 103 SCREEN MODE DETECTED - Creating sensor view!");
+      const networkMembers = this.udpNodesManager.getNetworkMembers();
+      console.log("🎯 Network members count:", networkMembers.length);
+      console.log("🎯 Container:", container);
+      console.log("🎯 document.body exists:", !!document.body);
+
+      // Hide visualization area when in 103 mode
+      const visualizationArea = document.getElementById("visualization-area");
+      if (visualizationArea) {
+        console.log("🗑️ Hiding visualization area for 103 screen");
+        visualizationArea.style.opacity = "0.05";
+        visualizationArea.style.pointerEvents = "none";
+      }
+
+      // Create the 103 sensor view with airplane model and sensors
+      this.screen103SensorView.create(container, networkMembers);
+
+      /* OLD 103 SCREEN CODE - REPLACED WITH NEW SENSOR VIEW
       const panel = document.createElement("div");
       panel.id = "network-details-panel";
       panel.style.cssText = `
@@ -717,6 +746,16 @@ class TacticalDisplayClient {
       }
 
       container.appendChild(panel);
+      */ // END OLD CODE
+    } else {
+      // Destroy 103 sensor view if not in 103 mode
+      this.screen103SensorView.destroy();
+      // Restore visualization area opacity when leaving 103 mode
+      const visualizationArea = document.getElementById("visualization-area");
+      if (visualizationArea) {
+        visualizationArea.style.opacity = "1";
+        visualizationArea.style.pointerEvents = "auto";
+      }
     }
 
     // 104 screen: show opcode 103 engagement data using dedicated component
