@@ -292,7 +292,7 @@ export class MapManager {
         ],
       },
       center: [lng, lat],
-      zoom: 7,
+      zoom: 10,
       maxZoom: 13,
       minZoom: 1,
       interactive: false,

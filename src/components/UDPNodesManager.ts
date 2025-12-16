@@ -31,6 +31,10 @@ export class UDPNodesManager {
   private radarCirclesEnabled: boolean = true; // Control whether radar circles are rendered
   private nodesVisible: boolean = true; // Control whether UDP nodes/lines are rendered
   private showOnlyMotherAircraft: boolean = false; // For 102 screen - show only mother aircraft or globalId 10
+  private targetNodeIdFor102: number | null = null; // Track which node to keep centered in 102 screen
+  private isRecentering: boolean = false; // Flag to prevent infinite loop when recentering
+  private hudCompassContainer: HTMLElement | null = null; // Container for HUD compass in 102 screen
+  private visualizationArea: HTMLElement | null = null; // Store reference to visualization area
 
   constructor(mapManager: MapManager | null = null) {
     this.mapManager = mapManager;
@@ -91,38 +95,101 @@ export class UDPNodesManager {
   setShowOnlyMotherAircraft(showOnly: boolean): void {
     this.showOnlyMotherAircraft = showOnly;
     if (this.mapManager && this.udpDotsContainer) {
-      this.updateUDPDots();
       // Center on mother aircraft or globalId 10
       if (showOnly) {
         this.centerOnMotherOrGlobalId10();
+        // Set up listener to keep node centered when map moves
+        this.setup102ScreenCentering();
+        // Create HUD compass - use visualization area if available, otherwise parent of udpDotsContainer
+        const container =
+          this.visualizationArea ||
+          this.udpDotsContainer?.parentElement ||
+          null;
+        if (container) {
+          console.log("🧭 Setting up HUD compass, container:", container);
+          this.createHUDCompass(container);
+        } else {
+          console.warn("⚠️ Cannot create HUD compass: no container available");
+        }
+      } else {
+        // Remove listener when exiting 102 screen
+        this.remove102ScreenCentering();
+        this.targetNodeIdFor102 = null;
+        // Remove HUD compass
+        this.removeHUDCompass();
       }
+      this.updateUDPDots();
     }
+  }
+
+  /**
+   * Set up listener to keep target node centered in 102 screen
+   * (No longer needed - we update map center directly in updateUDPDots)
+   */
+  private setup102ScreenCentering(): void {
+    // Map center is updated directly in updateUDPDots when rendering the target node
+    // No separate listener needed
+  }
+
+  /**
+   * Remove listener for 102 screen centering
+   */
+  private remove102ScreenCentering(): void {
+    // No listener to remove
   }
 
   /**
    * Center map on mother aircraft, or globalId 10 if no mother aircraft
    */
   private centerOnMotherOrGlobalId10(): void {
-    if (!this.mapManager) return;
+    if (!this.mapManager) {
+      console.warn("⚠️ Cannot center 102 screen: mapManager is null");
+      return;
+    }
 
     const allNodes = Array.from(this.udpDataPoints.values());
+    console.log(
+      `🔍 102 screen: Looking for target node. Total nodes: ${allNodes.length}`
+    );
 
     // First, try to find mother aircraft
     const motherAircraft = allNodes.find(
       (node) => node.internalData && node.internalData.isMotherAc === 1
     );
 
+    console.log(
+      `🔍 102 screen: Mother aircraft found: ${!!motherAircraft}, globalId 10 exists: ${!!this.udpDataPoints.get(10)}`
+    );
+
     const targetNode = motherAircraft || this.udpDataPoints.get(10);
 
     if (targetNode) {
+      // Store the target node ID for recentering
+      this.targetNodeIdFor102 = targetNode.globalId;
+
       const targetZoom = this.calculateZoomToFitNodes(targetNode);
+      this.isRecentering = true;
       this.mapManager.updateCenter(
         targetNode.latitude,
         targetNode.longitude,
         targetZoom
       );
+      // Reset flag after a short delay
+      setTimeout(() => {
+        this.isRecentering = false;
+      }, 100);
+
       console.log(
-        `🎯 Centered 102 screen on ${motherAircraft ? "mother aircraft" : "globalId 10"}: (${targetNode.latitude.toFixed(4)}, ${targetNode.longitude.toFixed(4)})`
+        `🎯 Centered 102 screen on ${motherAircraft ? "mother aircraft" : "globalId 10"} (ID: ${targetNode.globalId}): (${targetNode.latitude.toFixed(4)}, ${targetNode.longitude.toFixed(4)}), zoom: ${targetZoom.toFixed(2)}`
+      );
+
+      // Force update of dots after centering
+      setTimeout(() => {
+        this.updateUDPDots();
+      }, 200);
+    } else {
+      console.warn(
+        "⚠️ 102 screen: No target node found (no mother aircraft and no globalId 10)"
       );
     }
   }
@@ -162,9 +229,404 @@ export class UDPNodesManager {
   }
 
   /**
+   * Create HUD-style compass for 102 screen
+   * Styled to look like an aircraft nav display (HSI/ND-style)
+   */
+  private createHUDCompass(container: HTMLElement): void {
+    console.log(
+      "🧭 Creating HUD compass for 102 screen, container:",
+      container
+    );
+
+    // Remove existing compass if any
+    if (this.hudCompassContainer) {
+      this.hudCompassContainer.remove();
+    }
+
+    const compass = document.createElement("div");
+    compass.id = "hud-compass-102";
+    this.hudCompassContainer = compass;
+
+    // Even larger radius for more prominent aircraft display
+    const radius = 280;
+    const size = radius * 2 + 80; // padding for labels
+
+    compass.style.cssText = `
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: ${size}px;
+      height: ${size}px;
+      margin-top: -${size / 2}px;
+      margin-left: -${size / 2}px;
+      pointer-events: none;
+      z-index: 1000;
+      display: block;
+      visibility: visible;
+      opacity: 1;
+      transform-origin: center center;
+      transition: transform 0.5s ease-out;
+    `;
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", `${size}`);
+    svg.setAttribute("height", `${size}`);
+    svg.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+    `;
+
+    const centerX = size / 2;
+    const centerY = size / 2;
+
+    // Outer compass circle - thicker, brighter for aircraft display
+    const outerCircle = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "circle"
+    );
+    outerCircle.setAttribute("cx", `${centerX}`);
+    outerCircle.setAttribute("cy", `${centerY}`);
+    outerCircle.setAttribute("r", `${radius}`);
+    outerCircle.setAttribute("stroke", "#00ff00");
+    outerCircle.setAttribute("stroke-width", "2");
+    outerCircle.setAttribute("fill", "none");
+    outerCircle.setAttribute("opacity", "0.95");
+    outerCircle.style.filter =
+      "drop-shadow(0 0 5px #00ff00) drop-shadow(0 0 10px rgba(0,255,0,0.5))";
+    svg.appendChild(outerCircle);
+
+    // Tick marks every 10°, longer every 30° with heading labels
+    // More prominent ticks for aircraft display
+    for (let deg = 0; deg < 360; deg += 10) {
+      const angleRad = ((deg - 90) * Math.PI) / 180; // 0° at top
+      const isMajor = deg % 30 === 0;
+      const tickOuter = radius;
+      const tickInner = radius - (isMajor ? 18 : 8); // Longer ticks for larger compass
+
+      const x1 = centerX + Math.cos(angleRad) * tickOuter;
+      const y1 = centerY + Math.sin(angleRad) * tickOuter;
+      const x2 = centerX + Math.cos(angleRad) * tickInner;
+      const y2 = centerY + Math.sin(angleRad) * tickInner;
+
+      const tick = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "line"
+      );
+      tick.setAttribute("x1", `${x1}`);
+      tick.setAttribute("y1", `${y1}`);
+      tick.setAttribute("x2", `${x2}`);
+      tick.setAttribute("y2", `${y2}`);
+      tick.setAttribute("stroke", "#00ff00");
+      tick.setAttribute("stroke-width", isMajor ? "2.5" : "1.5");
+      tick.setAttribute("opacity", isMajor ? "1" : "0.85");
+      tick.style.filter = isMajor
+        ? "drop-shadow(0 0 4px #00ff00)"
+        : "drop-shadow(0 0 2px #00ff00)";
+      svg.appendChild(tick);
+
+      if (isMajor) {
+        // Heading label at 30 degree intervals (000, 030, 060, 090, etc.)
+        const heading = deg.toString().padStart(3, "0");
+        const labelRadius = radius + 20;
+        const lx = centerX + Math.cos(angleRad) * labelRadius;
+        const ly = centerY + Math.sin(angleRad) * labelRadius;
+
+        const text = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "text"
+        );
+        text.setAttribute("x", `${lx}`);
+        text.setAttribute("y", `${ly}`);
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("dominant-baseline", "middle");
+        text.setAttribute("fill", "#00ff00");
+        text.setAttribute("font-family", "monospace");
+        text.setAttribute("font-size", "14");
+        text.setAttribute("font-weight", "bold");
+        text.textContent = heading;
+        text.style.filter =
+          "drop-shadow(0 0 5px #00ff00) drop-shadow(0 0 8px rgba(0,255,0,0.6))";
+        svg.appendChild(text);
+      }
+    }
+
+    // Lubber line (fixed top reference) - more prominent for aircraft display
+    const lubber = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "line"
+    );
+    lubber.setAttribute("x1", `${centerX}`);
+    lubber.setAttribute("y1", `${centerY - radius}`);
+    lubber.setAttribute("x2", `${centerX}`);
+    lubber.setAttribute("y2", `${centerY - radius + 30}`);
+    lubber.setAttribute("stroke", "#ffff00");
+    lubber.setAttribute("stroke-width", "3");
+    lubber.style.filter =
+      "drop-shadow(0 0 6px #ffff00) drop-shadow(0 0 12px rgba(255,255,0,0.6))";
+    svg.appendChild(lubber);
+
+    // Aircraft symbol at center (larger, more detailed for aircraft display)
+    const aircraft = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "path"
+    );
+    const acSize = 16; // Larger aircraft symbol
+    const acPath = [
+      `M ${centerX} ${centerY - acSize}`, // nose
+      `L ${centerX - acSize * 0.7} ${centerY + acSize * 0.8}`, // left wing
+      `L ${centerX} ${centerY + acSize * 0.3}`, // tail
+      `L ${centerX + acSize * 0.7} ${centerY + acSize * 0.8}`, // right wing
+      "Z",
+    ].join(" ");
+    aircraft.setAttribute("d", acPath);
+    aircraft.setAttribute("fill", "#ffff00");
+    aircraft.setAttribute("opacity", "1");
+    aircraft.setAttribute("stroke", "#ffff00");
+    aircraft.setAttribute("stroke-width", "1");
+    aircraft.style.filter =
+      "drop-shadow(0 0 6px #ffff00) drop-shadow(0 0 12px rgba(255,255,0,0.7))";
+    svg.appendChild(aircraft);
+
+    // Inner dashed range circle - more prominent for aircraft display
+    const innerCircle = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "circle"
+    );
+    innerCircle.setAttribute("cx", `${centerX}`);
+    innerCircle.setAttribute("cy", `${centerY}`);
+    innerCircle.setAttribute("r", `${radius * 0.7}`);
+    innerCircle.setAttribute("stroke", "rgba(0,255,255,0.75)");
+    innerCircle.setAttribute("stroke-width", "1.5");
+    innerCircle.setAttribute("fill", "none");
+    innerCircle.setAttribute("stroke-dasharray", "6 4");
+    innerCircle.style.filter =
+      "drop-shadow(0 0 4px rgba(0,255,255,0.9)) drop-shadow(0 0 8px rgba(0,255,255,0.5))";
+    svg.appendChild(innerCircle);
+
+    // Add additional range ring at 50% for more aircraft display feel
+    const midCircle = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "circle"
+    );
+    midCircle.setAttribute("cx", `${centerX}`);
+    midCircle.setAttribute("cy", `${centerY}`);
+    midCircle.setAttribute("r", `${radius * 0.5}`);
+    midCircle.setAttribute("stroke", "rgba(0,255,255,0.5)");
+    midCircle.setAttribute("stroke-width", "1");
+    midCircle.setAttribute("fill", "none");
+    midCircle.setAttribute("stroke-dasharray", "4 4");
+    midCircle.style.filter = "drop-shadow(0 0 2px rgba(0,255,255,0.6))";
+    svg.appendChild(midCircle);
+
+    compass.appendChild(svg);
+    container.appendChild(compass);
+
+    console.log(
+      "🧭 HUD compass created and appended to container. Compass element:",
+      compass
+    );
+    console.log("🧭 Compass parent:", compass.parentElement);
+    console.log("🧭 Compass computed style:", {
+      display: window.getComputedStyle(compass).display,
+      visibility: window.getComputedStyle(compass).visibility,
+      opacity: window.getComputedStyle(compass).opacity,
+      zIndex: window.getComputedStyle(compass).zIndex,
+      position: window.getComputedStyle(compass).position,
+      top: window.getComputedStyle(compass).top,
+      left: window.getComputedStyle(compass).left,
+    });
+  }
+
+  /**
+   * Remove HUD compass
+   */
+  private removeHUDCompass(): void {
+    if (this.hudCompassContainer) {
+      this.hudCompassContainer.remove();
+      this.hudCompassContainer = null;
+    }
+  }
+
+  /**
+   * Calculate bearing from north (0,0) to a given lat/lng point
+   * Returns bearing in degrees (0-360, where 0 is north)
+   */
+  private calculateBearingFromNorth(
+    latitude: number,
+    longitude: number
+  ): number {
+    // For bearing from north, we calculate the bearing from the north pole (90, 0) to the point
+    // Or we can use a reference point at (0, 0) - the equator/prime meridian intersection
+    // Actually, "bearing from north" typically means the bearing from true north (0° heading)
+    // to the point's position. We'll use the map center as reference, or calculate from (0,0)
+
+    // Get map center as reference point
+    const mapCenter = this.mapManager?.getCenter();
+    if (mapCenter) {
+      return this.calculateBearing(
+        mapCenter.lat,
+        mapCenter.lng,
+        latitude,
+        longitude
+      );
+    }
+
+    // Fallback: calculate bearing from equator/prime meridian (0, 0)
+    return this.calculateBearing(0, 0, latitude, longitude);
+  }
+
+  /**
+   * Calculate bearing between two lat/lng points
+   * Returns bearing in degrees (0-360, where 0 is north)
+   */
+  private calculateBearing(
+    lat1: number,
+    lng1: number,
+    lat2: number,
+    lng2: number
+  ): number {
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    const lat1Rad = (lat1 * Math.PI) / 180;
+    const lat2Rad = (lat2 * Math.PI) / 180;
+
+    const y = Math.sin(dLng) * Math.cos(lat2Rad);
+    const x =
+      Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+      Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
+
+    let bearing = (Math.atan2(y, x) * 180) / Math.PI;
+    bearing = (bearing + 360) % 360; // Normalize to 0-360
+
+    return bearing;
+  }
+
+  /**
+   * Update compass position and rotation to follow the node
+   */
+  private updateCompassPosition(
+    screenPoint: { x: number; y: number },
+    containerRect: DOMRect,
+    visualizationArea: HTMLElement | null,
+    nodeLatitude?: number,
+    nodeLongitude?: number
+  ): void {
+    if (!this.hudCompassContainer || !visualizationArea) return;
+
+    const compass = this.hudCompassContainer;
+    const size = parseFloat(compass.style.width) || 640; // Default size if not set
+    const halfSize = size / 2;
+
+    // Get visualization area position
+    const visAreaRect = visualizationArea.getBoundingClientRect();
+
+    // Calculate node's position relative to visualization area
+    // screenPoint is relative to udpDotsContainer, which is inside visualizationArea
+    const nodeXInVisArea =
+      containerRect.left - visAreaRect.left + screenPoint.x;
+    const nodeYInVisArea = containerRect.top - visAreaRect.top + screenPoint.y;
+
+    // Position compass centered on the node
+    compass.style.left = `${nodeXInVisArea - halfSize}px`;
+    compass.style.top = `${nodeYInVisArea - halfSize}px`;
+    compass.style.marginLeft = "0";
+    compass.style.marginTop = "0";
+
+    // Calculate bearing from north to the node's position
+    if (
+      nodeLatitude !== undefined &&
+      nodeLongitude !== undefined &&
+      !isNaN(nodeLatitude) &&
+      !isNaN(nodeLongitude)
+    ) {
+      // Calculate bearing from north (or map center) to the node
+      const bearing = this.calculateBearingFromNorth(
+        nodeLatitude,
+        nodeLongitude
+      );
+
+      // Normalize bearing to 0-360 range
+      let normalizedBearing = bearing % 360;
+      if (normalizedBearing < 0) normalizedBearing += 360;
+
+      // Rotate the compass card so that the bearing degree mark is at the top (north position)
+      // CSS rotation is clockwise, so we use negative value
+      const rotation = -normalizedBearing;
+
+      // Set smooth transition for rotation (0.6s with easing for smooth movement)
+      compass.style.transition = "transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)";
+      compass.style.transformOrigin = "center center";
+      compass.style.transform = `rotate(${rotation}deg)`;
+
+      // Update heading display to show the bearing
+      this.updateCompassHeading(normalizedBearing);
+      console.log(
+        `🧭 Compass rotating smoothly: bearing from north=${normalizedBearing}°, rotation=${rotation}°, node=(${nodeLatitude.toFixed(4)}, ${nodeLongitude.toFixed(4)})`
+      );
+    } else {
+      // Smooth transition even when resetting
+      compass.style.transition = "transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)";
+      compass.style.transformOrigin = "center center";
+      compass.style.transform = "rotate(0deg)";
+      this.updateCompassHeading(0);
+      console.log(
+        `🧭 No node position data available (lat=${nodeLatitude}, lng=${nodeLongitude}), compass at 0°`
+      );
+    }
+  }
+
+  /**
+   * Update the heading display on the compass
+   */
+  private updateCompassHeading(heading: number): void {
+    if (!this.hudCompassContainer) return;
+
+    // Find or create heading display element
+    let headingDisplay = this.hudCompassContainer.querySelector(
+      "#compass-heading-display"
+    ) as HTMLElement;
+
+    if (!headingDisplay) {
+      headingDisplay = document.createElement("div");
+      headingDisplay.id = "compass-heading-display";
+      headingDisplay.style.cssText = `
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #ffff00;
+        font-family: monospace;
+        font-size: 18px;
+        font-weight: bold;
+        text-align: center;
+        z-index: 1001;
+        pointer-events: none;
+        text-shadow: 0 0 8px #ffff00, 0 0 12px rgba(255,255,0,0.8);
+      `;
+      this.hudCompassContainer.appendChild(headingDisplay);
+    }
+
+    // Format heading as 3 digits (000-359)
+    const headingStr = Math.round(heading).toString().padStart(3, "0");
+    headingDisplay.textContent = `${headingStr}°`;
+  }
+
+  /**
+   * Recreate compass if needed (called after updateUI recreates containers)
+   * Public method to allow renderer to call it
+   */
+  public recreateCompassIfNeeded(): void {
+    if (this.showOnlyMotherAircraft && this.visualizationArea) {
+      console.log("🧭 Recreating compass after container reinitialization");
+      this.createHUDCompass(this.visualizationArea);
+    }
+  }
+
+  /**
    * Initialize UDP nodes containers
    */
   initializeContainers(visualizationArea: HTMLElement): void {
+    this.visualizationArea = visualizationArea;
     // Create container for UDP dots
     const udpDotsContainer = document.createElement("div");
     udpDotsContainer.id = "udp-dots-container";
@@ -270,14 +732,36 @@ export class UDPNodesManager {
               }
             );
           } else {
-            // Opcode 102 data without existing node - store it temporarily
+            // Opcode 102 data without existing node - store ALL data from opcode 102
+            // This includes: callsign, internalData, regionalData (with metadata), battleGroupData, radioData, etc.
             console.log(
-              `⚠️ Opcode 102 data for globalId ${point.globalId} but no existing node found. Storing metadata.`
+              `⚠️ Opcode 102 data for globalId ${point.globalId} but no existing node found. Storing all opcode 102 data.`
             );
+            console.log("📊 Storing opcode 102 data:", {
+              globalId: point.globalId,
+              callsign: point.callsign,
+              hasInternalData: !!point.internalData,
+              hasRegionalData: !!point.regionalData,
+              hasMetadata: !!point.regionalData?.metadata,
+              metadata: point.regionalData?.metadata,
+            });
+
+            // Store all opcode 102 data - position will be added when opcode 101 arrives
             this.udpDataPoints.set(point.globalId, {
-              ...point,
-              opcode: 101, // Mark as green node type
-              // No position yet - will be added when opcode 101 arrives
+              globalId: point.globalId,
+              // Store all opcode 102 fields
+              callsign: point.callsign,
+              callsignId: point.callsignId,
+              internalData: point.internalData,
+              regionalData: point.regionalData, // This includes metadata!
+              battleGroupData: point.battleGroupData,
+              radioData: point.radioData,
+              circleRanges: point.circleRanges,
+              opcode: 101, // Mark as green node type (will be updated when 101 arrives)
+              // Position will be added when opcode 101 arrives
+              latitude: point.latitude || 0, // Temporary, will be updated
+              longitude: point.longitude || 0, // Temporary, will be updated
+              altitude: point.altitude || 0, // Temporary, will be updated
             });
           }
         } else if (
@@ -296,45 +780,54 @@ export class UDPNodesManager {
 
           if (hasOpcode102Data) {
             // Merge position data from opcode 101/104 with existing opcode 102 metadata
-            this.udpDataPoints.set(point.globalId, {
-              ...existingNode,
-              ...point,
-              // Use new position data
+            // IMPORTANT: Preserve ALL opcode 102 data (callsign, metadata, internalData, etc.)
+            const mergedNodeWith102 = {
+              ...existingNode, // Start with all opcode 102 data
+              // Add position data from opcode 101/104
               latitude: point.latitude,
               longitude: point.longitude,
-              // Preserve callsign from opcode 102
+              altitude:
+                point.altitude !== undefined
+                  ? point.altitude
+                  : existingNode.altitude,
+              // Preserve callsign from opcode 102 (don't overwrite with undefined)
               callsign: existingNode.callsign || point.callsign,
-              // Deep merge nested objects to preserve opcode 102 data
+              // Preserve ALL opcode 102 nested data - only merge if opcode 101/104 has new data
               internalData: existingNode.internalData
                 ? {
                     ...existingNode.internalData,
-                    ...point.internalData,
+                    ...(point.internalData || {}), // Only merge if point has internalData
                   }
-                : point.internalData,
+                : existingNode.internalData, // Keep opcode 102 internalData
               regionalData: existingNode.regionalData
                 ? {
                     ...existingNode.regionalData,
-                    ...point.regionalData,
+                    ...(point.regionalData || {}), // Only merge if point has regionalData
+                    // CRITICAL: Preserve metadata from opcode 102
                     metadata: {
-                      ...existingNode.regionalData?.metadata,
-                      ...point.regionalData?.metadata,
+                      ...existingNode.regionalData?.metadata, // Keep all opcode 102 metadata
+                      ...(point.regionalData?.metadata || {}), // Only add new metadata if present
                     },
                   }
-                : point.regionalData,
+                : existingNode.regionalData, // Keep opcode 102 regionalData
               battleGroupData: existingNode.battleGroupData
                 ? {
                     ...existingNode.battleGroupData,
-                    ...point.battleGroupData,
+                    ...(point.battleGroupData || {}),
                   }
-                : point.battleGroupData,
+                : existingNode.battleGroupData,
               radioData: existingNode.radioData
                 ? {
                     ...existingNode.radioData,
-                    ...point.radioData,
+                    ...(point.radioData || {}),
                   }
-                : point.radioData,
+                : existingNode.radioData,
+              // Preserve circleRanges from opcode 102
+              circleRanges: existingNode.circleRanges || point.circleRanges,
               opcode: point.opcode, // Use the new opcode (101 or 104)
-            });
+            };
+
+            this.udpDataPoints.set(point.globalId, mergedNodeWith102);
             console.log(
               `📍 Merged position data (opcode ${point.opcode}) with opcode 102 metadata for node ${point.globalId}: callsign=${existingNode.callsign || "N/A"}, hasMetadata=${!!existingNode.regionalData?.metadata}`
             );
@@ -354,35 +847,61 @@ export class UDPNodesManager {
               );
             }
           } else {
-            // Normal update/add for opcodes 101, 104
-            // BUT: Check if there's existing metadata from opcode 102 that we need to preserve
+            // Normal update/add for opcodes 101, 104 (no existing opcode 102 data)
             const existingNode = this.udpDataPoints.get(point.globalId);
-            if (existingNode && existingNode.regionalData?.metadata) {
-              // Preserve existing metadata when updating position
-              this.udpDataPoints.set(point.globalId, {
-                ...existingNode,
-                ...point,
-                latitude: point.latitude,
-                longitude: point.longitude,
-                // Preserve regionalData with metadata
-                regionalData: existingNode.regionalData,
-                opcode: point.opcode, // Preserve opcode (101 or 104)
-              });
+            if (existingNode) {
+              // Update existing node - merge all fields from incoming point
+              // Preserve any existing metadata from opcode 102 if it exists
+              const updatedNode = {
+                ...existingNode, // Start with existing data
+                ...point, // Overwrite with new data from opcode 101/104 (includes all fields: veIn, veIe, heading, groundSpeed, range, etc.)
+                latitude: point.latitude, // Ensure position is updated
+                longitude: point.longitude, // Ensure position is updated
+                altitude:
+                  point.altitude !== undefined
+                    ? point.altitude
+                    : existingNode.altitude,
+                // Preserve metadata if it exists in existing node
+                regionalData: existingNode.regionalData?.metadata
+                  ? {
+                      ...existingNode.regionalData,
+                      ...(point.regionalData || {}),
+                      metadata: existingNode.regionalData.metadata, // Preserve metadata
+                    }
+                  : point.regionalData, // Use new regionalData if no existing metadata
+                opcode: point.opcode, // Use the new opcode (101 or 104)
+              };
+              this.udpDataPoints.set(point.globalId, updatedNode);
+              console.log(
+                `📍 Updated existing node ${point.globalId} (opcode ${point.opcode}): lat=${point.latitude}, lng=${point.longitude}`,
+                {
+                  hasVeIn: point.veIn !== undefined,
+                  hasVeIe: point.veIe !== undefined,
+                  hasHeading: point.heading !== undefined,
+                  hasGroundSpeed: point.groundSpeed !== undefined,
+                  hasRange: point.range !== undefined,
+                }
+              );
             } else {
-              // Normal update/add for opcodes 101, 104
-              // Coordinates are already converted in main.ts, use them directly
-              // Update or add the point (preserve opcode if present)
-              this.udpDataPoints.set(point.globalId, {
-                ...point,
+              // Add new node - use all data from incoming point
+              const newNode = {
+                ...point, // Include ALL fields from the point (veIn, veIe, heading, groundSpeed, range, etc.)
                 latitude: point.latitude,
                 longitude: point.longitude,
                 opcode: point.opcode, // Preserve opcode (101 or 104)
-              });
+              };
+              this.udpDataPoints.set(point.globalId, newNode);
+              console.log(
+                `📍 Added new node ${point.globalId} (opcode ${point.opcode}): lat=${point.latitude}, lng=${point.longitude}`,
+                {
+                  hasVeIn: point.veIn !== undefined,
+                  hasVeIe: point.veIe !== undefined,
+                  hasHeading: point.heading !== undefined,
+                  hasGroundSpeed: point.groundSpeed !== undefined,
+                  hasRange: point.range !== undefined,
+                }
+              );
             }
-
-            console.log(
-              `📍 Updated node ${point.globalId} (opcode ${point.opcode}): lat=${point.latitude}, lng=${point.longitude}`
-            );
           }
         }
       }
@@ -758,7 +1277,16 @@ export class UDPNodesManager {
    * Update UDP symbols on the map
    */
   updateUDPDots(): void {
+    console.log("🔍 updateUDPDots called:", {
+      hasMapManager: !!this.mapManager,
+      hasUdpDotsContainer: !!this.udpDotsContainer,
+      nodesVisible: this.nodesVisible,
+      showOnlyMotherAircraft: this.showOnlyMotherAircraft,
+      targetNodeIdFor102: this.targetNodeIdFor102,
+    });
+
     if (!this.mapManager || !this.udpDotsContainer || !this.nodesVisible) {
+      console.warn("⚠️ updateUDPDots: Skipping - missing requirements");
       if (this.udpDotsContainer) {
         this.udpDotsContainer.innerHTML = "";
       }
@@ -824,23 +1352,136 @@ export class UDPNodesManager {
         const isMotherAc =
           point.internalData && point.internalData.isMotherAc === 1;
         const isGlobalId10 = globalId === 10;
+
+        console.log(
+          `🔍 102 screen node check: globalId=${globalId}, isMotherAc=${isMotherAc}, isGlobalId10=${isGlobalId10}`
+        );
+
         if (!isMotherAc && !isGlobalId10) {
           return; // Skip this node
         }
+
+        console.log(
+          `✅ 102 screen: Showing node ${globalId} (${isMotherAc ? "mother aircraft" : "globalId 10"})`
+        );
       }
 
       const lat = point.latitude;
       const lng = point.longitude;
 
-      // Check if point is within visible bounds
+      // In 102 screen, skip bounds check for the target node - always show it
+      const skipBoundsCheck =
+        this.showOnlyMotherAircraft &&
+        (this.targetNodeIdFor102 === globalId ||
+          (point.internalData && point.internalData.isMotherAc === 1) ||
+          globalId === 10);
+
+      // Check if point is within visible bounds (unless we're in 102 screen showing target node)
       if (
-        lng >= bounds.getWest() &&
-        lng <= bounds.getEast() &&
-        lat >= bounds.getSouth() &&
-        lat <= bounds.getNorth()
+        skipBoundsCheck ||
+        (lng >= bounds.getWest() &&
+          lng <= bounds.getEast() &&
+          lat >= bounds.getSouth() &&
+          lat <= bounds.getNorth())
       ) {
-        // Project lat/lng to screen coordinates
-        const screenPoint = mapboxMap.project([lng, lat]);
+        // In 102 screen, position target node at fixed center of screen
+        let screenPoint: { x: number; y: number };
+        if (this.showOnlyMotherAircraft && skipBoundsCheck) {
+          // Use map projection to get pixel coordinates for the node
+          const nodeProjected = mapboxMap.project([lng, lat]);
+
+          // Get the center of the map viewport
+          const mapContainer = mapboxMap.getContainer();
+          const mapRect = mapContainer.getBoundingClientRect();
+          const viewportCenterX = mapRect.width / 2;
+          const viewportCenterY = mapRect.height / 2;
+
+          // Calculate offset from node's projected position to viewport center
+          const offsetX = viewportCenterX - nodeProjected.x;
+          const offsetY = viewportCenterY - nodeProjected.y;
+
+          // Position node at viewport center (relative to udpDotsContainer)
+          const container = this.udpDotsContainer;
+          const containerRect = container?.getBoundingClientRect();
+          if (containerRect) {
+            // Get container's position relative to map
+            const containerLeft = containerRect.left - mapRect.left;
+            const containerTop = containerRect.top - mapRect.top;
+
+            // Calculate screen point at viewport center relative to container
+            // This ensures the node is exactly at the center of the screen (and compass)
+            screenPoint = {
+              x: viewportCenterX - containerLeft,
+              y: viewportCenterY - containerTop,
+            };
+
+            // Ensure node is exactly centered (compensate for any rounding)
+            const containerWidth = containerRect.width;
+            const containerHeight = containerRect.height;
+            screenPoint.x = containerWidth / 2;
+            screenPoint.y = containerHeight / 2;
+
+            // Update compass position and rotation to show bearing from north to the node
+            // Pass the node's latitude and longitude to calculate the bearing
+            this.updateCompassPosition(
+              screenPoint,
+              containerRect,
+              this.visualizationArea,
+              point.latitude,
+              point.longitude
+            );
+
+            console.log("🔍 102 screen: Node projected:", nodeProjected);
+            console.log("🔍 102 screen: Viewport center:", {
+              viewportCenterX,
+              viewportCenterY,
+            });
+            console.log("🔍 102 screen: Screen point:", screenPoint);
+
+            // Continuously update map center to match node's position
+            if (!this.isRecentering) {
+              const currentCenter = this.mapManager?.getCenter();
+              if (currentCenter) {
+                const latDiff = Math.abs(currentCenter.lat - point.latitude);
+                const lngDiff = Math.abs(currentCenter.lng - point.longitude);
+                // Update map center if it doesn't match node position
+                if (latDiff > 0.00001 || lngDiff > 0.00001) {
+                  const currentZoom = this.mapManager?.getZoom();
+                  this.isRecentering = true;
+                  this.mapManager?.updateCenter(
+                    point.latitude,
+                    point.longitude,
+                    currentZoom
+                  );
+                  setTimeout(() => {
+                    this.isRecentering = false;
+                  }, 50);
+                }
+              } else {
+                // No center yet, set it
+                const currentZoom = this.mapManager?.getZoom() || 10;
+                this.isRecentering = true;
+                this.mapManager?.updateCenter(
+                  point.latitude,
+                  point.longitude,
+                  currentZoom
+                );
+                setTimeout(() => {
+                  this.isRecentering = false;
+                }, 50);
+              }
+            }
+          } else {
+            // Fallback to viewport center if container not available
+            screenPoint = {
+              x: viewportCenterX,
+              y: viewportCenterY,
+            };
+          }
+        } else {
+          // Normal projection for other nodes
+          screenPoint = mapboxMap.project([lng, lat]);
+        }
 
         // Determine icon based on opcode
         const isLocked = this.lockedNodeIds.has(globalId);
@@ -898,6 +1539,7 @@ export class UDPNodesManager {
 
         // Create container for icon (to add lock indicator overlay and call sign label)
         const iconContainer = document.createElement("div");
+        const is102ScreenNode = this.showOnlyMotherAircraft && skipBoundsCheck;
         iconContainer.style.cssText = `
           position: absolute;
           left: ${screenPoint.x}px;
@@ -905,9 +1547,16 @@ export class UDPNodesManager {
           width: ${iconSize}px;
           transform: translate(-50%, -50%);
           pointer-events: ${isRedNode || isGreenNode ? "auto" : "none"};
-          z-index: 3;
+          z-index: ${is102ScreenNode ? 1001 : 3};
           cursor: ${isRedNode || isGreenNode ? "pointer" : "default"};
         `;
+
+        if (is102ScreenNode) {
+          console.log(
+            `🔍 Creating icon container for 102 screen node ${globalId} at:`,
+            screenPoint
+          );
+        }
 
         iconElement.style.cssText = `
           width: 100%;
@@ -1082,8 +1731,16 @@ export class UDPNodesManager {
         }
 
         this.udpDotsContainer.appendChild(iconContainer);
+        console.log(
+          `✅ Node ${globalId} appended to container at position:`,
+          screenPoint
+        );
       }
     });
+
+    console.log(
+      `🔍 Finished rendering. Total nodes in container: ${this.udpDotsContainer.children.length}`
+    );
   }
 
   /**

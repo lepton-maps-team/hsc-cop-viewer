@@ -14,7 +14,7 @@ import { GeoMessageManager } from "./components/GeoMessageManager";
 class TacticalDisplayClient {
   private aircraft: Map<string, Aircraft> = new Map();
   private nodeId: string = "";
-  private zoomLevel: number = 5;
+  private zoomLevel: number = 10;
   private showOtherNodes: boolean = true;
   private mapManager: MapManager | null = null;
   private centerMode: "mother" | "self" = "mother";
@@ -412,7 +412,7 @@ class TacticalDisplayClient {
 
       // Center map on nodes if available, otherwise keep current center
       if (nodesCenter) {
-        const currentZoom = this.mapManager.getZoom() || 7;
+        const currentZoom = this.mapManager.getZoom() || 10;
         this.mapManager.updateCenter(
           nodesCenter.lat,
           nodesCenter.lng,
@@ -426,6 +426,16 @@ class TacticalDisplayClient {
         this.udpNodesManager.updateUDPDots();
         this.udpNodesManager.updateConnectionLines();
         this.engagementManager.updateLines();
+        
+        // If in 102 screen, ensure compass is created and node is visible
+        if (this.viewMode === "self-only") {
+          setTimeout(() => {
+            // Force update of nodes to ensure they're rendered
+            this.udpNodesManager.updateUDPDots();
+            // Recreate compass after containers are initialized
+            this.udpNodesManager.recreateCompassIfNeeded();
+          }, 200);
+        }
         // Re-update geo messages if map is already loaded
         const allData = this.udpNodesManager.getAllNodes();
         const geoMessages = allData.filter((point) => point.opcode === 122);
