@@ -10,9 +10,8 @@ import { UDPNodesManager, UDPDataPoint } from "./components/UDPNodesManager";
 import { NetworkMembersTable } from "./components/NetworkMembersTable";
 import { EngagementManager } from "./components/EngagementManager";
 import { EngagementDisplay } from "./components/EngagementDisplay";
-import { Screen104Display } from "./components/Screen104Display";
 import { GeoMessageManager } from "./components/GeoMessageManager";
-import { Screen103SensorView } from "./components/Screen103SensorView";
+import { HUDDisplay } from "./components/HUDDisplay";
 
 class TacticalDisplayClient {
   private aircraft: Map<string, Aircraft> = new Map();
@@ -21,8 +20,7 @@ class TacticalDisplayClient {
   private showOtherNodes: boolean = true;
   private mapManager: MapManager | null = null;
   private centerMode: "mother" | "self" = "mother";
-  private viewMode: "normal" | "self-only" | "network-103" | "engagement-104" =
-    "normal";
+  private viewMode: "normal" | "self-only" | "hud" = "normal";
 
   // UDP Nodes Manager
   private udpNodesManager: UDPNodesManager;
@@ -36,9 +34,8 @@ class TacticalDisplayClient {
   private networkMembersTable: NetworkMembersTable;
   private engagementManager: EngagementManager;
   private engagementDisplay: EngagementDisplay;
-  private screen104Display: Screen104Display;
-  private screen103SensorView: Screen103SensorView;
   private geoMessageManager: GeoMessageManager;
+  private hudDisplay: HUDDisplay;
   private simulationSystem: {
     isRunning: boolean;
     startTime: number;
@@ -91,9 +88,8 @@ class TacticalDisplayClient {
     this.networkMembersTable = new NetworkMembersTable();
     this.engagementManager = new EngagementManager(this.mapManager);
     this.engagementDisplay = new EngagementDisplay();
-    this.screen104Display = new Screen104Display();
-    this.screen103SensorView = new Screen103SensorView();
     this.geoMessageManager = new GeoMessageManager(this.mapManager);
+    this.hudDisplay = new HUDDisplay(this.udpNodesManager);
 
     this.initialize();
 
@@ -144,14 +140,6 @@ class TacticalDisplayClient {
         const networkMembers = this.udpNodesManager.getNetworkMembers();
         this.networkMembersTable.update(networkMembers);
 
-        // Update 103 screen sensor view ONLY if in 103 mode
-        if (this.viewMode === "network-103") {
-          const display = document.getElementById("screen-103-sensor-view");
-          if (display) {
-            this.screen103SensorView.update(networkMembers);
-          }
-        }
-
         // Handle opcode 103 engagement data
         const engagementData = data.filter((point) => point.opcode === 103);
         if (engagementData.length > 0) {
@@ -160,17 +148,6 @@ class TacticalDisplayClient {
             this.udpNodesManager.getAllNodesMap()
           );
           this.engagementManager.updateEngagements(engagementData as any);
-
-          // Update 104 screen display ONLY if in 104 mode
-          if (this.viewMode === "engagement-104") {
-            const engagements = this.engagementManager.getEngagements();
-            const allNodesMap = this.udpNodesManager.getAllNodesMap();
-            // Only update if display exists
-            const display = document.getElementById("screen-104-display");
-            if (display) {
-              this.screen104Display.update(engagements, allNodesMap);
-            }
-          }
         }
 
         // Handle opcode 122 geo-referenced messages
@@ -248,7 +225,7 @@ class TacticalDisplayClient {
       this.showOtherNodes,
       this.centerMode,
       this.mapManager,
-      (mode) => this.setViewMode(mode),
+      (mode) => this.setViewMode(mode as "normal" | "self-only" | "hud"),
       () => this.zoomIn(),
       () => this.zoomOut(),
       () => this.toggleOtherNodesVisibility(),
@@ -264,7 +241,7 @@ class TacticalDisplayClient {
     const visualizationArea = document.createElement("div");
     visualizationArea.id = "visualization-area";
     const visualizationBackground =
-      this.viewMode === "normal" ? "#000000" : "transparent";
+      this.viewMode === "normal" ? "#000000" : this.viewMode === "hud" ? "#1a1a2e" : "transparent";
     visualizationArea.style.cssText = `
       position: relative;
       width: calc(100% - 60px);
@@ -282,8 +259,22 @@ class TacticalDisplayClient {
 
     container.appendChild(visualizationArea);
 
-    // Create map center display in top left
-    this.createMapCenterDisplay(visualizationArea);
+    // Create HUD display if in HUD mode
+    if (this.viewMode === "hud") {
+      // Destroy any existing HUD first
+      this.hudDisplay.destroy();
+      this.hudDisplay.create(visualizationArea);
+      // Hide map center display in HUD mode
+      const mapCenterDisplay = document.getElementById("map-center-display");
+      if (mapCenterDisplay) {
+        mapCenterDisplay.style.display = "none";
+      }
+    } else {
+      // Destroy HUD if switching away from HUD mode
+      this.hudDisplay.destroy();
+      // Create map center display in top left (not in HUD mode)
+      this.createMapCenterDisplay(visualizationArea);
+    }
 
     // Determine center aircraft (for rendering, not for map center)
     if (this.aircraft.size > 0) {
@@ -321,9 +312,7 @@ class TacticalDisplayClient {
 
       // Initialize engagement manager containers
       this.engagementManager.initializeContainers(visualizationArea);
-      if (this.viewMode !== "network-103") {
-        this.engagementManager.createEngagementList(container);
-      }
+      this.engagementManager.createEngagementList(container);
 
       // Set callbacks for red node actions
       this.udpNodesManager.setRedNodeCallbacks(
@@ -380,8 +369,9 @@ class TacticalDisplayClient {
       }
 
       // Map visibility per screen:
-      // - 101 (normal) and 103 (network-103): map hidden
+      // - 101 (normal): map hidden
       // - 102 (self-only): map visible
+      // - 103 (hud): map hidden
       const shouldShowMap = this.viewMode === "self-only";
       const isVisible = this.mapManager.isMapVisible();
       if (shouldShowMap && !isVisible) {
@@ -394,11 +384,9 @@ class TacticalDisplayClient {
 
       // Reinitialize engagement manager containers and list
       this.engagementManager.initializeContainers(visualizationArea);
-      if (this.viewMode !== "network-103") {
-        this.engagementManager.createEngagementList(container);
-        // Refresh engagement list display with current engagements
-        this.engagementManager.refreshEngagementList();
-      }
+      this.engagementManager.createEngagementList(container);
+      // Refresh engagement list display with current engagements
+      this.engagementManager.refreshEngagementList();
 
       // Re-setup event listeners for the reinitialized map
       this.mapManager.getMapboxMap()?.on("load", () => {
@@ -477,8 +465,9 @@ class TacticalDisplayClient {
       }
 
       // Map visibility per screen:
-      // - 101 (normal) and 103 (network-103): map hidden
+      // - 101 (normal): map hidden
       // - 102 (self-only): map visible
+      // - 103 (hud): map hidden
       const shouldShowMap = this.viewMode === "self-only";
       const isVisible = this.mapManager.isMapVisible();
       if (shouldShowMap && !isVisible) {
@@ -486,6 +475,18 @@ class TacticalDisplayClient {
       } else if (!shouldShowMap && isVisible) {
         this.mapManager.toggleMapVisibility();
       }
+    }
+
+    // Hide map and other elements in HUD mode
+    if (this.viewMode === "hud") {
+      if (this.mapManager) {
+        const isVisible = this.mapManager.isMapVisible();
+        if (isVisible) {
+          this.mapManager.toggleMapVisibility();
+        }
+      }
+      // Don't render aircraft or other elements in HUD mode
+      return;
     }
 
     // Only create adaptive radar circles if UDP data is not available
@@ -612,257 +613,6 @@ class TacticalDisplayClient {
 
     this.debugInfo.create(container, this.aircraft, this.nodeId);
 
-    // 103 screen: show sensor view with airplane model
-    const existingDetailsPanel = document.getElementById(
-      "network-details-panel"
-    );
-    if (existingDetailsPanel) {
-      existingDetailsPanel.remove();
-    }
-
-    if (this.viewMode === "network-103") {
-      console.log("🎯🎯🎯 103 SCREEN MODE DETECTED - Creating sensor view!");
-      const networkMembers = this.udpNodesManager.getNetworkMembers();
-      console.log("🎯 Network members count:", networkMembers.length);
-      console.log("🎯 Container:", container);
-      console.log("🎯 document.body exists:", !!document.body);
-
-      // Hide visualization area when in 103 mode
-      const visualizationArea = document.getElementById("visualization-area");
-      if (visualizationArea) {
-        console.log("🗑️ Hiding visualization area for 103 screen");
-        visualizationArea.style.opacity = "0.05";
-        visualizationArea.style.pointerEvents = "none";
-      }
-
-      // Create the 103 sensor view with airplane model and sensors
-      this.screen103SensorView.create(container, networkMembers);
-
-      /* OLD 103 SCREEN CODE - REPLACED WITH NEW SENSOR VIEW
-      const panel = document.createElement("div");
-      panel.id = "network-details-panel";
-      panel.style.cssText = `
-        position: fixed;
-        left: 10px;
-        bottom: 10px;
-        width: 360px;
-        max-height: 60vh;
-        background: rgba(0, 0, 0, 0.9);
-        border: 2px solid #00ff00;
-        border-radius: 8px;
-        padding: 10px 12px;
-        color: #ffffff;
-        font-family: monospace;
-        font-size: 11px;
-        z-index: 150;
-        box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
-        overflow-y: auto;
-      `;
-
-      const header = document.createElement("div");
-      header.textContent = "NETWORK NODES (103)";
-      header.style.cssText = `
-        font-weight: bold;
-        font-size: 13px;
-        margin-bottom: 8px;
-        text-align: center;
-        color: #00ff00;
-        border-bottom: 1px solid #00ff00;
-        padding-bottom: 4px;
-      `;
-      panel.appendChild(header);
-
-      if (networkMembers.length === 0) {
-        const empty = document.createElement("div");
-        empty.textContent = "No network nodes available";
-        empty.style.cssText = `
-          text-align: center;
-          color: #cccccc;
-          margin-top: 8px;
-        `;
-        panel.appendChild(empty);
-      } else {
-        networkMembers.forEach((node: UDPDataPoint) => {
-          const callsign = node.callsign || "N/A";
-          const isMotherAc =
-            node.internalData && node.internalData.isMotherAc === 1;
-          const metadata = node.regionalData?.metadata || {};
-          const baroAltitude =
-            metadata.baroAltitude !== undefined ? metadata.baroAltitude : NaN;
-          const groundSpeed =
-            metadata.groundSpeed !== undefined ? metadata.groundSpeed : NaN;
-          const mach = metadata.mach !== undefined ? metadata.mach : NaN;
-
-          const baroAltitudeDisplay = isNaN(baroAltitude)
-            ? "NaN"
-            : `${baroAltitude} ft`;
-          const groundSpeedDisplay = isNaN(groundSpeed)
-            ? "NaN"
-            : `${groundSpeed} kt`;
-          const machDisplay = isNaN(mach) ? "NaN" : `${mach}`;
-
-          const nodeBlock = document.createElement("div");
-          nodeBlock.style.cssText = `
-            border: 1px solid rgba(0, 255, 0, 0.4);
-            border-radius: 6px;
-            padding: 6px 8px;
-            margin-bottom: 6px;
-            background: rgba(0, 0, 0, 0.7);
-          `;
-
-          nodeBlock.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-              <span style="color: #00ff00; font-weight: bold;">GID: ${
-                node.globalId ?? "N/A"
-              }</span>
-              <span style="color: ${
-                isMotherAc ? "#ffaa00" : "#cccccc"
-              }; font-size: 10px;">
-                ${isMotherAc ? "MOTHER" : ""}
-              </span>
-            </div>
-            <div style="margin-bottom: 4px;">
-              <span style="color: #00ff00;">CALLSIGN:</span>
-              <span style="margin-left: 4px;">${callsign}</span>
-            </div>
-            <div style="margin-bottom: 4px; color: #cccccc;">
-              <div>Lat: ${node.latitude?.toFixed(6) ?? "N/A"}°</div>
-              <div>Lng: ${node.longitude?.toFixed(6) ?? "N/A"}°</div>
-              ${
-                node.altitude !== undefined
-                  ? `<div>Alt: ${node.altitude} ft</div>`
-                  : ""
-              }
-            </div>
-            <div style="color: #cccccc; font-size: 10px;">
-              <div><span style="color:#00ff00;">Baro Alt:</span> ${baroAltitudeDisplay}</div>
-              <div><span style="color:#00ff00;">GS:</span> ${groundSpeedDisplay}</div>
-              <div><span style="color:#00ff00;">Mach:</span> ${machDisplay}</div>
-            </div>
-          `;
-
-          panel.appendChild(nodeBlock);
-        });
-      }
-
-      container.appendChild(panel);
-      */ // END OLD CODE
-    } else {
-      // Destroy 103 sensor view if not in 103 mode
-      this.screen103SensorView.destroy();
-      // Restore visualization area opacity when leaving 103 mode
-      const visualizationArea = document.getElementById("visualization-area");
-      if (visualizationArea) {
-        visualizationArea.style.opacity = "1";
-        visualizationArea.style.pointerEvents = "auto";
-      }
-    }
-
-    // 104 screen: show opcode 103 engagement data using dedicated component
-    if (this.viewMode === "engagement-104") {
-      console.log("🎯🎯🎯 104 SCREEN MODE DETECTED - Creating display NOW!");
-      console.log("🎯 screen104Display exists:", !!this.screen104Display);
-      console.log("🎯 document.body exists:", !!document.body);
-      console.log("🎯 Current view mode:", this.viewMode);
-
-      const engagements = this.engagementManager.getEngagements();
-      const allNodesMap = this.udpNodesManager.getAllNodesMap();
-
-      console.log("🎯 104 Screen: Creating Screen104Display", {
-        engagementsCount: engagements.length,
-        nodesMapSize: allNodesMap.size,
-        viewMode: this.viewMode,
-        screen104DisplayExists: !!this.screen104Display,
-      });
-      console.log("🎯 Engagement data:", engagements);
-
-      // Create the 104 screen display - FORCE IT
-      if (!this.screen104Display) {
-        console.error("❌ screen104Display is NULL! Recreating...");
-        this.screen104Display = new Screen104Display();
-      }
-
-      try {
-        console.log("🎯 Calling screen104Display.create()...");
-        this.screen104Display.create();
-        console.log("✅✅✅ Screen104Display.create() completed!");
-
-        // Hide map and other elements that might cover the display
-        const visualizationArea = document.getElementById("visualization-area");
-        if (visualizationArea) {
-          console.log("🗑️ Hiding visualization area for 104 screen");
-          visualizationArea.style.opacity = "0.05";
-          visualizationArea.style.pointerEvents = "none";
-        }
-
-        // Force immediate update
-        console.log("🎯 Calling screen104Display.update() immediately...");
-        this.screen104Display.update(engagements, allNodesMap);
-        console.log("✅✅✅ Screen104Display.update() completed!");
-
-        // Verify it's in DOM
-        setTimeout(() => {
-          const display = document.getElementById("screen-104-display");
-          if (display) {
-            const rect = display.getBoundingClientRect();
-            console.log("✅✅✅ Display FOUND in DOM:", {
-              id: display.id,
-              offsetWidth: display.offsetWidth,
-              offsetHeight: display.offsetHeight,
-              top: rect.top,
-              left: rect.left,
-              zIndex: window.getComputedStyle(display).zIndex,
-              display: window.getComputedStyle(display).display,
-              visibility: window.getComputedStyle(display).visibility,
-              opacity: window.getComputedStyle(display).opacity,
-            });
-
-            // Log all elements with high z-index that might be covering it
-            const allElements = Array.from(
-              document.body.getElementsByTagName("*")
-            );
-            const highZElements = allElements.filter((el) => {
-              const zIndex = parseInt(
-                window.getComputedStyle(el as HTMLElement).zIndex
-              );
-              return !isNaN(zIndex) && zIndex > 10000;
-            });
-            console.log(
-              "🔍 Elements with z-index > 10000:",
-              highZElements.map((el) => ({
-                tag: el.tagName,
-                id: el.id,
-                zIndex: window.getComputedStyle(el as HTMLElement).zIndex,
-              }))
-            );
-          } else {
-            console.error("❌❌❌ Display NOT FOUND in DOM after creation!");
-          }
-
-          // Update again after delay
-          this.screen104Display.update(engagements, allNodesMap);
-        }, 300);
-      } catch (error) {
-        console.error(
-          "❌❌❌ CRITICAL ERROR creating Screen104Display:",
-          error
-        );
-        console.error("Error stack:", (error as Error).stack);
-      }
-    } else {
-      // Remove 104 screen display when not in 104 mode
-      console.log("🗑️ Not in 104 mode, destroying display");
-      if (this.screen104Display) {
-        this.screen104Display.destroy();
-      }
-      // Restore visualization area opacity when leaving 104 mode
-      const visualizationArea = document.getElementById("visualization-area");
-      if (visualizationArea) {
-        visualizationArea.style.opacity = "1";
-        visualizationArea.style.pointerEvents = "auto";
-      }
-    }
-
     this.checkWarnings();
   }
 
@@ -898,8 +648,8 @@ class TacticalDisplayClient {
     const display = document.getElementById("map-center-display");
     if (!display || !this.mapManager) return;
 
-    // Hide map center display in 102 screen
-    if (this.viewMode === "self-only") {
+    // Hide map center display in 102 and 103 screens
+    if (this.viewMode === "self-only" || this.viewMode === "hud") {
       display.style.display = "none";
       return;
     } else {
@@ -923,27 +673,22 @@ class TacticalDisplayClient {
     }
   }
 
-  private setViewMode(
-    mode: "normal" | "self-only" | "network-103" | "engagement-104"
-  ) {
+  private setViewMode(mode: "normal" | "self-only" | "hud") {
     const previousMode = this.viewMode;
     this.viewMode = mode;
 
     console.log("🔄 setViewMode called:", {
       previousMode,
       newMode: mode,
-      isSwitchingTo104: mode === "engagement-104",
-      isSwitchingAwayFrom104:
-        previousMode === "engagement-104" && mode !== "engagement-104",
     });
 
     // Enable dialogs for network nodes (green nodes) on all screens
     this.udpNodesManager.setDialogsEnabled(true);
 
-    // Enable radar circles only in 101 screen; hide them in 102/103
+    // Enable radar circles only in 101 screen; hide them in 102 and 103
     this.udpNodesManager.setRadarCirclesEnabled(this.viewMode === "normal");
 
-    // Show UDP nodes/lines: in 101 show all, in 102 show only mother aircraft (or globalId 10)
+    // Show UDP nodes/lines: in 101 show all, in 102 show only mother aircraft (or globalId 10), in 103 hide all
     if (this.viewMode === "normal") {
       this.udpNodesManager.setNodesVisible(true);
       this.udpNodesManager.setShowOnlyMotherAircraft(false);
@@ -951,39 +696,14 @@ class TacticalDisplayClient {
       // 102 screen: show only mother aircraft (or globalId 10)
       this.udpNodesManager.setNodesVisible(true);
       this.udpNodesManager.setShowOnlyMotherAircraft(true);
-    } else {
-      // 103 and 104 screens: hide nodes
+    } else if (this.viewMode === "hud") {
+      // 103 screen: hide all nodes
       this.udpNodesManager.setNodesVisible(false);
-      this.udpNodesManager.setShowOnlyMotherAircraft(false);
     }
 
     // Center logic:
-    // 101 screen centered on mother, 102 centered on mother/globalId10, 103 & 104 screens centered on self
-    this.centerMode =
-      this.viewMode === "normal" || this.viewMode === "self-only"
-        ? "mother"
-        : ("self" as "self");
-
-    // Hide map in 104 screen (show only engagement display)
-    if (this.mapManager) {
-      const mapElement = document.getElementById("map-background");
-      if (mapElement) {
-        if (mode === "engagement-104") {
-          mapElement.style.opacity = "0.1"; // Dim the map
-        } else {
-          mapElement.style.opacity = "1"; // Show map normally
-        }
-      }
-    }
-
-    // IMPORTANT: Destroy 104 screen display ONLY if switching AWAY from 104 mode
-    // previousMode was 104, but new mode is NOT 104
-    if (previousMode === "engagement-104" && mode !== "engagement-104") {
-      console.log(
-        "🗑️ Switching away from 104 mode, destroying Screen104Display"
-      );
-      this.screen104Display.destroy();
-    }
+    // 101 screen centered on mother, 102 centered on mother/globalId10, 103 doesn't need centering
+    this.centerMode = "mother";
 
     this.updateUI();
 
@@ -996,22 +716,15 @@ class TacticalDisplayClient {
     const button103 = document.querySelector(
       'button[data-view-mode="103"]'
     ) as HTMLElement;
-    const button104 = document.querySelector(
-      'button[data-view-mode="104"]'
-    ) as HTMLElement;
 
     if (button101) {
-      button101.style.background = mode === "normal" ? "#44ff44" : "#333";
+      button101.style.background = mode === "normal" ? "#44ff44" : "rgba(60, 60, 70, 0.9)";
     }
     if (button102) {
-      button102.style.background = mode === "self-only" ? "#ff8844" : "#333";
+      button102.style.background = mode === "self-only" ? "#ff8844" : "rgba(60, 60, 70, 0.9)";
     }
     if (button103) {
-      button103.style.background = mode === "network-103" ? "#00c4ff" : "#333";
-    }
-    if (button104) {
-      button104.style.background =
-        mode === "engagement-104" ? "#ff4dff" : "#333";
+      button103.style.background = mode === "hud" ? "#8844ff" : "rgba(60, 60, 70, 0.9)";
     }
   }
 
