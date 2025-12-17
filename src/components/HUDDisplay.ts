@@ -65,6 +65,9 @@ export class HUDDisplay {
     // Bottom right data block
     this.createBottomRightData(hud, flightData);
 
+    // Status indicators (top right)
+    this.createStatusIndicators(hud, flightData);
+
     container.appendChild(hud);
     this.hudContainer = hud;
 
@@ -92,6 +95,14 @@ export class HUDDisplay {
       baroAltitude?: number;
       groundSpeed?: number;
       mach?: number;
+    };
+    battleGroupData?: {
+      combatEmergency?: number;
+      chaffRemaining?: number;
+      flareRemaining?: number;
+      masterArmStatus?: number;
+      acsStatus?: number;
+      fuel?: number;
     };
   } {
     // Default values
@@ -181,6 +192,40 @@ export class HUDDisplay {
 
         // Calculate radio altitude (approximate AGL)
         radioAltitude = Math.max(0, altitude - 20);
+
+        // Get battle group data from opcode 102
+        const node102 = nodeWithGlobalId10 as any;
+        if (node102.battleGroupData) {
+          // Battle group data will be included in return
+        }
+      }
+    }
+
+    // Get battle group data from node with globalId 10 (from opcode 102)
+    let battleGroupData: {
+      combatEmergency?: number;
+      chaffRemaining?: number;
+      flareRemaining?: number;
+      masterArmStatus?: number;
+      acsStatus?: number;
+      fuel?: number;
+    } | undefined = undefined;
+
+    if (this.udpNodesManager) {
+      const allNodes = this.udpNodesManager.getAllNodes();
+      const nodeWithGlobalId10 = allNodes.find((node) => node.globalId === 10);
+      if (nodeWithGlobalId10) {
+        const node102 = nodeWithGlobalId10 as any;
+        if (node102.battleGroupData) {
+          battleGroupData = {
+            combatEmergency: node102.battleGroupData.combatEmergency,
+            chaffRemaining: node102.battleGroupData.chaffRemaining,
+            flareRemaining: node102.battleGroupData.flareRemaining,
+            masterArmStatus: node102.battleGroupData.masterArmStatus,
+            acsStatus: node102.battleGroupData.acsStatus,
+            fuel: node102.battleGroupData.fuel,
+          };
+        }
       }
     }
 
@@ -199,6 +244,7 @@ export class HUDDisplay {
       latitude,
       longitude,
       metadata,
+      battleGroupData,
     };
   }
 
@@ -836,6 +882,88 @@ export class HUDDisplay {
     `;
 
     container.appendChild(dataBlock);
+  }
+
+  private createStatusIndicators(container: HTMLElement, data: any): void {
+    const statusBlock = document.createElement("div");
+    statusBlock.style.cssText = `
+      position: absolute;
+      top: 50px;
+      right: 20px;
+      font-size: 10px;
+      line-height: 1.6;
+      font-weight: bold;
+      text-align: right;
+      text-shadow: 0 0 3px rgba(0, 255, 0, 0.8);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    `;
+
+    const bgd = data.battleGroupData || {};
+    let content = "";
+
+    // Combat Emergency
+    if (bgd.combatEmergency !== undefined) {
+      const color = bgd.combatEmergency ? "#ff0000" : "#00ff00";
+      const text = bgd.combatEmergency ? "EMERG" : "OK";
+      content += `<div style="color: ${color}; ${bgd.combatEmergency ? 'animation: blink 1s infinite;' : ''}">${text}</div>`;
+    }
+
+    // Master Arm Status
+    if (bgd.masterArmStatus !== undefined) {
+      const color = bgd.masterArmStatus ? "#ff4400" : "#888888";
+      const text = bgd.masterArmStatus ? "ARM" : "SAFE";
+      content += `<div style="color: ${color}">ARM ${text}</div>`;
+    }
+
+    // ACS Status
+    if (bgd.acsStatus !== undefined) {
+      const acsColor = this.getACSColor(bgd.acsStatus);
+      const acsTextColor = this.getACSTextColor(bgd.acsStatus);
+      content += `<div style="color: ${acsTextColor}; background: ${acsColor}; padding: 2px 6px; border-radius: 3px; display: inline-block;">ACS ${bgd.acsStatus}</div>`;
+    }
+
+    // Fuel
+    if (bgd.fuel !== undefined) {
+      const fuelColor = this.getFuelColor(bgd.fuel);
+      content += `<div style="color: #000; background: ${fuelColor}; padding: 2px 6px; border-radius: 3px; display: inline-block; margin-top: 2px;">FUEL ${bgd.fuel.toFixed(0)}%</div>`;
+    }
+
+    // Chaff Remaining
+    if (bgd.chaffRemaining !== undefined) {
+      content += `<div>CHAFF ${bgd.chaffRemaining}</div>`;
+    }
+
+    // Flare Remaining
+    if (bgd.flareRemaining !== undefined) {
+      content += `<div>FLARE ${bgd.flareRemaining}</div>`;
+    }
+
+    if (content) {
+      statusBlock.innerHTML = content;
+      container.appendChild(statusBlock);
+    }
+  }
+
+  private getACSColor(status: number): string {
+    if (status === 0) return "rgba(100, 100, 100, 0.5)";
+    if (status === 1) return "rgba(0, 255, 0, 0.6)";
+    if (status === 2) return "rgba(255, 255, 0, 0.6)";
+    return "rgba(255, 0, 0, 0.6)";
+  }
+
+  private getACSTextColor(status: number): string {
+    if (status === 0) return "#888";
+    if (status === 1) return "#000";
+    if (status === 2) return "#000";
+    return "#fff";
+  }
+
+  private getFuelColor(fuel: number): string {
+    if (fuel > 50) return "rgba(0, 255, 0, 0.6)";
+    if (fuel > 25) return "rgba(255, 255, 0, 0.6)";
+    return "rgba(255, 0, 0, 0.6)";
   }
 
   private startUpdateLoop(): void {

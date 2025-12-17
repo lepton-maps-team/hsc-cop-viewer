@@ -12,6 +12,7 @@ import { EngagementManager } from "./components/EngagementManager";
 import { EngagementDisplay } from "./components/EngagementDisplay";
 import { GeoMessageManager } from "./components/GeoMessageManager";
 import { HUDDisplay } from "./components/HUDDisplay";
+import { AircraftLayoutDisplay } from "./components/AircraftLayoutDisplay";
 
 class TacticalDisplayClient {
   private aircraft: Map<string, Aircraft> = new Map();
@@ -20,7 +21,7 @@ class TacticalDisplayClient {
   private showOtherNodes: boolean = true;
   private mapManager: MapManager | null = null;
   private centerMode: "mother" | "self" = "mother";
-  private viewMode: "normal" | "self-only" | "hud" = "normal";
+  private viewMode: "normal" | "self-only" | "hud" | "aircraft-layout" = "normal";
 
   // UDP Nodes Manager
   private udpNodesManager: UDPNodesManager;
@@ -36,6 +37,7 @@ class TacticalDisplayClient {
   private engagementDisplay: EngagementDisplay;
   private geoMessageManager: GeoMessageManager;
   private hudDisplay: HUDDisplay;
+  private aircraftLayoutDisplay: AircraftLayoutDisplay;
   private simulationSystem: {
     isRunning: boolean;
     startTime: number;
@@ -90,6 +92,7 @@ class TacticalDisplayClient {
     this.engagementDisplay = new EngagementDisplay();
     this.geoMessageManager = new GeoMessageManager(this.mapManager);
     this.hudDisplay = new HUDDisplay(this.udpNodesManager);
+    this.aircraftLayoutDisplay = new AircraftLayoutDisplay(this.udpNodesManager);
 
     this.initialize();
 
@@ -225,7 +228,7 @@ class TacticalDisplayClient {
       this.showOtherNodes,
       this.centerMode,
       this.mapManager,
-      (mode) => this.setViewMode(mode as "normal" | "self-only" | "hud"),
+      (mode) => this.setViewMode(mode as "normal" | "self-only" | "hud" | "aircraft-layout"),
       () => this.zoomIn(),
       () => this.zoomOut(),
       () => this.toggleOtherNodesVisibility(),
@@ -241,7 +244,7 @@ class TacticalDisplayClient {
     const visualizationArea = document.createElement("div");
     visualizationArea.id = "visualization-area";
     const visualizationBackground =
-      this.viewMode === "normal" ? "#000000" : this.viewMode === "hud" ? "#1a1a2e" : "transparent";
+      this.viewMode === "normal" ? "#000000" : this.viewMode === "hud" ? "#1a1a2e" : this.viewMode === "aircraft-layout" ? "#000000" : "transparent";
     visualizationArea.style.cssText = `
       position: relative;
       width: calc(100% - 60px);
@@ -263,16 +266,28 @@ class TacticalDisplayClient {
     if (this.viewMode === "hud") {
       // Destroy any existing HUD first
       this.hudDisplay.destroy();
+      this.aircraftLayoutDisplay.destroy();
       this.hudDisplay.create(visualizationArea);
       // Hide map center display in HUD mode
       const mapCenterDisplay = document.getElementById("map-center-display");
       if (mapCenterDisplay) {
         mapCenterDisplay.style.display = "none";
       }
-    } else {
+    } else if (this.viewMode === "aircraft-layout") {
       // Destroy HUD if switching away from HUD mode
       this.hudDisplay.destroy();
-      // Create map center display in top left (not in HUD mode)
+      this.aircraftLayoutDisplay.destroy();
+      this.aircraftLayoutDisplay.create(visualizationArea);
+      // Hide map center display in aircraft layout mode
+      const mapCenterDisplay = document.getElementById("map-center-display");
+      if (mapCenterDisplay) {
+        mapCenterDisplay.style.display = "none";
+      }
+    } else {
+      // Destroy HUD and aircraft layout if switching away from those modes
+      this.hudDisplay.destroy();
+      this.aircraftLayoutDisplay.destroy();
+      // Create map center display in top left (not in HUD or aircraft layout mode)
       this.createMapCenterDisplay(visualizationArea);
     }
 
@@ -372,6 +387,7 @@ class TacticalDisplayClient {
       // - 101 (normal): map hidden
       // - 102 (self-only): map visible
       // - 103 (hud): map hidden
+      // - 104 (aircraft-layout): map hidden
       const shouldShowMap = this.viewMode === "self-only";
       const isVisible = this.mapManager.isMapVisible();
       if (shouldShowMap && !isVisible) {
@@ -468,6 +484,7 @@ class TacticalDisplayClient {
       // - 101 (normal): map hidden
       // - 102 (self-only): map visible
       // - 103 (hud): map hidden
+      // - 104 (aircraft-layout): map hidden
       const shouldShowMap = this.viewMode === "self-only";
       const isVisible = this.mapManager.isMapVisible();
       if (shouldShowMap && !isVisible) {
@@ -477,15 +494,15 @@ class TacticalDisplayClient {
       }
     }
 
-    // Hide map and other elements in HUD mode
-    if (this.viewMode === "hud") {
+    // Hide map and other elements in HUD and aircraft layout modes
+    if (this.viewMode === "hud" || this.viewMode === "aircraft-layout") {
       if (this.mapManager) {
         const isVisible = this.mapManager.isMapVisible();
         if (isVisible) {
           this.mapManager.toggleMapVisibility();
         }
       }
-      // Don't render aircraft or other elements in HUD mode
+      // Don't render aircraft or other elements in HUD or aircraft layout mode
       return;
     }
 
@@ -673,7 +690,7 @@ class TacticalDisplayClient {
     }
   }
 
-  private setViewMode(mode: "normal" | "self-only" | "hud") {
+  private setViewMode(mode: "normal" | "self-only" | "hud" | "aircraft-layout") {
     const previousMode = this.viewMode;
     this.viewMode = mode;
 
@@ -688,7 +705,7 @@ class TacticalDisplayClient {
     // Enable radar circles only in 101 screen; hide them in 102 and 103
     this.udpNodesManager.setRadarCirclesEnabled(this.viewMode === "normal");
 
-    // Show UDP nodes/lines: in 101 show all, in 102 show only mother aircraft (or globalId 10), in 103 hide all
+    // Show UDP nodes/lines: in 101 show all, in 102 show only mother aircraft (or globalId 10), in 103 and 104 hide all
     if (this.viewMode === "normal") {
       this.udpNodesManager.setNodesVisible(true);
       this.udpNodesManager.setShowOnlyMotherAircraft(false);
@@ -696,9 +713,10 @@ class TacticalDisplayClient {
       // 102 screen: show only mother aircraft (or globalId 10)
       this.udpNodesManager.setNodesVisible(true);
       this.udpNodesManager.setShowOnlyMotherAircraft(true);
-    } else if (this.viewMode === "hud") {
-      // 103 screen: hide all nodes
+    } else if (this.viewMode === "hud" || this.viewMode === "aircraft-layout") {
+      // 103 and 104 screens: hide all nodes
       this.udpNodesManager.setNodesVisible(false);
+      this.udpNodesManager.setRadarCirclesEnabled(false);
     }
 
     // Center logic:
@@ -716,6 +734,9 @@ class TacticalDisplayClient {
     const button103 = document.querySelector(
       'button[data-view-mode="103"]'
     ) as HTMLElement;
+    const button104 = document.querySelector(
+      'button[data-view-mode="104"]'
+    ) as HTMLElement;
 
     if (button101) {
       button101.style.background = mode === "normal" ? "#44ff44" : "rgba(60, 60, 70, 0.9)";
@@ -725,6 +746,9 @@ class TacticalDisplayClient {
     }
     if (button103) {
       button103.style.background = mode === "hud" ? "#8844ff" : "rgba(60, 60, 70, 0.9)";
+    }
+    if (button104) {
+      button104.style.background = mode === "aircraft-layout" ? "#44aaff" : "rgba(60, 60, 70, 0.9)";
     }
   }
 
@@ -1136,3 +1160,4 @@ class TacticalDisplayClient {
 document.addEventListener("DOMContentLoaded", () => {
   const tacticalClient = new TacticalDisplayClient();
 });
+

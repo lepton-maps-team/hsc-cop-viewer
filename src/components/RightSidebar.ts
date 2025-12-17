@@ -5,12 +5,12 @@ export class RightSidebar {
 
   public create(
     container: HTMLElement,
-    viewMode: "normal" | "self-only" | "hud",
+    viewMode: "normal" | "self-only" | "hud" | "aircraft-layout",
     zoomLevel: number,
     showOtherNodes: boolean,
     centerMode: "mother" | "self",
     mapManager: MapManager | null,
-    onViewModeChange: (mode: "normal" | "self-only" | "hud") => void,
+    onViewModeChange: (mode: "normal" | "self-only" | "hud" | "aircraft-layout") => void,
     onZoomIn: () => void,
     onZoomOut: () => void,
     onToggleNodes: () => void,
@@ -125,6 +125,35 @@ export class RightSidebar {
       button103.style.opacity = "1";
     });
     button103.setAttribute("data-view-mode", "103");
+
+    const button104 = document.createElement("button");
+    button104.textContent = "104";
+    button104.style.cssText = `
+      width: 40px;
+      height: 30px;
+      background: ${viewMode === "aircraft-layout" ? "#44aaff" : "rgba(60, 60, 70, 0.9)"};
+      color: white;
+      border: 1.5px solid ${viewMode === "aircraft-layout" ? "#66bbff" : "rgba(100, 100, 120, 0.6)"};
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 10px;
+      font-weight: bold;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    `;
+    button104.addEventListener("click", () => onViewModeChange("aircraft-layout"));
+    button104.addEventListener("mouseenter", () => {
+      button104.style.opacity = "0.8";
+    });
+    button104.addEventListener("mouseleave", () => {
+      button104.style.opacity = "1";
+    });
+    button104.setAttribute("data-view-mode", "104");
 
     const zoomOutButton = document.createElement("button");
     zoomOutButton.textContent = "−";
@@ -263,6 +292,7 @@ export class RightSidebar {
     sidebar.appendChild(button101);
     sidebar.appendChild(button102);
     sidebar.appendChild(button103);
+    sidebar.appendChild(button104);
     sidebar.appendChild(zoomOutButton);
     sidebar.appendChild(zoomDisplay);
     sidebar.appendChild(zoomInButton);

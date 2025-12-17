@@ -339,23 +339,77 @@ function setupUdpClient(host: string, port: number): Promise<void> {
             const flareRemaining = readBits(battleOffset + 176, 8); // byte 22
             const masterArmStatus = readBits(battleOffset + 184, 8); // byte 23
             const acsStatus = readBits(battleOffset + 192, 8); // byte 24
-            const fuel = readBits(battleOffset + 200, 8) * FUEL_RESOLUTION; // byte 25 (double as 1 byte seems wrong, but following struct)
+            // According to struct opcode102E:
+            // double fuel; is 1 byte at offset 25 (marked as double but 1 byte in struct)
+            const fuel = readBits(battleOffset + 200, 8) * FUEL_RESOLUTION; // byte 25
+            // UINT8 numOfWeapons; is 1 byte at offset 26
             const numOfWeapons = readBits(battleOffset + 208, 8); // byte 26
-            const numOfSensors = readBits(battleOffset + 216, 8); // byte 27
+            // UINT8 numofSensors; is 1 byte at offset 27 (note: "numofSensors" not "numOfSensors")
+            const numOfSensors1Byte = readBits(battleOffset + 216, 8); // byte 27
+
+            // Debug: Check if sensors needs to be read as 2 bytes (maybe struct is wrong or padding)
+            const numOfSensors2Bytes = readBits(battleOffset + 216, 16); // 2 bytes at 27-28
+            const numOfSensorsAlt = readBits(battleOffset + 224, 16); // 2 bytes at 28-29 (if weapons is 1 byte)
+
+            console.log(
+              `[DEBUG] battleGroupData - fuel: ${fuel}, numOfWeapons: ${numOfWeapons}, numOfSensors (1 byte): ${numOfSensors1Byte}, numOfSensors (2 bytes at 27-28): ${numOfSensors2Bytes}, numOfSensors (2 bytes at 28-29): ${numOfSensorsAlt}`
+            );
+
+            // Use 2-byte reading if 1-byte doesn't match expected value (12)
+            let numOfSensors = numOfSensors1Byte;
+            if (numOfSensors1Byte !== 12) {
+              if (numOfSensorsAlt === 12) {
+                numOfSensors = numOfSensorsAlt; // 2 bytes at 28-29
+                console.log(
+                  `[DEBUG] Using 2-byte numOfSensors at 28-29: ${numOfSensors}`
+                );
+              } else if (numOfSensors2Bytes === 12) {
+                numOfSensors = numOfSensors2Bytes; // 2 bytes at 27-28 (overlaps with weapons, probably wrong)
+                console.log(
+                  `[DEBUG] Using 2-byte numOfSensors at 27-28: ${numOfSensors}`
+                );
+              }
+            }
 
             // Read weaponsData vector (opcode102H, 4 bytes each)
+            // According to struct: weapons 1 byte (26), sensors 1 byte (27)
+            // But if sensors is actually 2 bytes, adjust offset
+            // Structure: fuel (1 byte, 25), weapons (1 byte, 26), sensors (1 or 2 bytes, 27 or 27-28)
             const weaponsData = [];
-            let weaponsOffset = battleOffset + 224; // 28 bytes = 224 bits
-            for (let w = 0; w < numOfWeapons; w++) {
-              weaponsData.push({
-                code: readBits(weaponsOffset, 8), // byte 0
-                value: readBits(weaponsOffset + 8, 8), // byte 1
-                reserved: readBits(weaponsOffset + 16, 16), // 2 bytes (2-3)
-              });
-              weaponsOffset += 32; // 4 bytes = 32 bits
+            let weaponsOffset: number;
+
+            // Calculate offset: after fuel (25), weapons (26), sensors (27 or 27-28)
+            if (numOfSensors === numOfSensorsAlt && numOfSensors === 12) {
+              // Sensors is 2 bytes at 28-29, so weaponsData starts at 30
+              weaponsOffset = battleOffset + 240; // byte 30 (after fuel 25, weapons 26, sensors 28-29)
+            } else {
+              // Sensors is 1 byte at 27, so weaponsData starts at 28
+              weaponsOffset = battleOffset + 224; // byte 28 (after fuel 25, weapons 26, sensors 27)
+            }
+
+            if (numOfWeapons > 0) {
+              console.log(
+                `[DEBUG] Reading ${numOfWeapons} weapons starting at offset ${weaponsOffset} (byte ${weaponsOffset / 8})`
+              );
+
+              for (let w = 0; w < numOfWeapons; w++) {
+                const weaponCode = readBits(weaponsOffset, 8);
+                const weaponValue = readBits(weaponsOffset + 8, 8);
+                const weaponReserved = readBits(weaponsOffset + 16, 16);
+                console.log(
+                  `[DEBUG] Weapon ${w}: code=${weaponCode}, value=${weaponValue}, reserved=${weaponReserved}`
+                );
+                weaponsData.push({
+                  code: weaponCode,
+                  value: weaponValue,
+                  reserved: weaponReserved,
+                });
+                weaponsOffset += 32; // 4 bytes = 32 bits
+              }
             }
 
             // Read sensorsData vector (opcode102I, 4 bytes each)
+            // Sensors data starts right after weaponsData
             const sensorsData = [];
             let sensorsOffset = weaponsOffset;
             for (let s = 0; s < numOfSensors; s++) {
@@ -452,6 +506,7 @@ function setupUdpClient(host: string, port: number): Promise<void> {
           }
 
           latestNodes = networkMembers;
+          console.log("Network Members (102):", networkMembers);
           if (mainWindow)
             mainWindow.webContents.send("data-from-main", networkMembers);
           console.log("Network Members (102):", networkMembers);
